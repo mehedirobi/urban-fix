@@ -3,7 +3,8 @@ import { useParams, useNavigate } from "react-router-dom";
 import axios from "axios";
 import Swal from "sweetalert2";
 import { motion } from "framer-motion";
-import { Upload, X, HiOutlineArrowLeft } from "lucide-react";
+import { Upload, X, } from "lucide-react";
+import { HiOutlineArrowLeft } from "react-icons/hi";
 import useAuth from "../hooks/UseAuth";
 
 const API_URL = import.meta.env.VITE_API_URL || "https://urban-fix-server.vercel.app";

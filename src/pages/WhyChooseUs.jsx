@@ -15,6 +15,28 @@ const WHY_ITEMS = [
   },
 ];
 
+const WhyCard = memo(function WhyCard({ title, desc }) {
+  return (
+    <article
+      className="p-8 bg-base-100 rounded-2xl shadow-md min-h-[280px]
+        flex flex-col justify-start
+        border border-transparent
+        transition-all duration-300 motion-reduce:transition-none
+        hover:border-primary focus-within:border-primary
+        hover:shadow-2xl hover:shadow-primary/20
+        hover:-translate-y-2 motion-reduce:hover:translate-y-0"
+    >
+      <h3 className="text-xl md:text-2xl font-semibold mb-4 text-base-content">
+        {title}
+      </h3>
+
+      <p className="text-base-content/70 text-base md:text-lg leading-relaxed">
+        {desc}
+      </p>
+    </article>
+  );
+});
+
 const WhyChooseUs = () => {
   return (
     <section className="py-20 bg-base-200 px-5">
@@ -24,25 +46,8 @@ const WhyChooseUs = () => {
         </h2>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-10">
-          {WHY_ITEMS.map((item, index) => (
-            <article
-              key={index}
-              className="p-8 bg-white rounded-2xl shadow-md min-h-[280px]
-                flex flex-col justify-start
-                border border-transparent
-                transition-all duration-300
-                hover:border-primary
-                hover:shadow-2xl hover:shadow-primary/20
-                hover:-translate-y-2"
-            >
-              <h3 className="text-xl md:text-2xl font-semibold mb-4">
-                {item.title}
-              </h3>
-
-              <p className="text-gray-700 text-base md:text-lg leading-relaxed">
-                {item.desc}
-              </p>
-            </article>
+          {WHY_ITEMS.map((item) => (
+            <WhyCard key={item.title} title={item.title} desc={item.desc} />
           ))}
         </div>
       </div>

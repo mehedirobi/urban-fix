@@ -1,7 +1,9 @@
-import React, { useEffect, useState, useMemo } from "react";
+import React, { useEffect, useMemo, useState, memo } from "react";
 import { PDFDownloadLink } from "@react-pdf/renderer";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import UseAuth from "../hooks/UseAuth";
 import axios from "axios";
+import Swal from "sweetalert2";
 import InvoicePDF from "../components/InvoicePDF";
 import { Bar } from "react-chartjs-2";
 import {
@@ -14,19 +16,15 @@ import {
   Legend,
 } from "chart.js";
 
-ChartJS.register(
-  CategoryScale,
-  LinearScale,
-  BarElement,
-  Title,
-  Tooltip,
-  Legend
-);
+ChartJS.register(CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend);
 
-const API_BASE =
-  import.meta.env.VITE_API_URL || "https://urban-fix-server.vercel.app";
+const api = axios.create({
+  baseURL: import.meta.env.VITE_API_URL || "https://urban-fix-server.vercel.app",
+});
 
-const PaymentsChart = ({ data }) => {
+/* ---------------- Chart ---------------- */
+
+const PaymentsChart = memo(function PaymentsChart({ data }) {
   const chartData = useMemo(
     () => ({
       labels: data.map((d) => d.month),
@@ -42,212 +40,169 @@ const PaymentsChart = ({ data }) => {
   );
 
   return <Bar data={chartData} />;
-};
+});
+
+/* ---------------- Row ---------------- */
+
+const PaymentRow = memo(function PaymentRow({ payment }) {
+  return (
+    <tr>
+      <td>{new Date(payment.createdAt).toLocaleDateString()}</td>
+      <td>${payment.amount}</td>
+      <td>{payment.transactionId}</td>
+      <td>
+        <span className="badge badge-success">{payment.status}</span>
+      </td>
+      <td>
+        <PDFDownloadLink
+          document={<InvoicePDF payment={payment} />}
+          fileName={`Invoice-${payment._id}.pdf`}
+        >
+          {({ loading }) => (loading ? "Preparing..." : "Download")}
+        </PDFDownloadLink>
+      </td>
+    </tr>
+  );
+});
+
+/* ---------------- Main ---------------- */
 
 const UserPayments = () => {
   const { user } = UseAuth();
+  const queryClient = useQueryClient();
+  const email = user?.email;
+  const queryKey = ["payments", email];
 
-  const [payments, setPayments] = useState([]);
   const [filterStatus, setFilterStatus] = useState("All");
   const [filterMethod, setFilterMethod] = useState("All");
-
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
 
   const sessionId = useMemo(() => {
     const params = new URLSearchParams(window.location.search);
     return params.get("session_id");
   }, []);
 
-  /**
-   * Fetch payments
-   */
-  const fetchPayments = async (email, signal) => {
-    try {
-      setLoading(true);
+  const {
+    data: payments = [],
+    isLoading,
+    isError,
+  } = useQuery({
+    queryKey,
+    enabled: !!email,
+    queryFn: async () => {
+      const res = await api.get(`/payments/${email}`);
+      return Array.isArray(res.data) ? res.data : [];
+    },
+  });
 
-      const res = await axios.get(`${API_BASE}/payments/${email}`, {
-        signal,
-      });
+  const verifyMutation = useMutation({
+    mutationFn: () => api.post("/payments/verify", { sessionId, email }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey });
+      // Strip session_id so a page refresh doesn't re-verify.
+      const url = new URL(window.location.href);
+      url.searchParams.delete("session_id");
+      window.history.replaceState({}, "", url.toString());
+    },
+    onError: (err) => {
+      console.error("Payment verification error:", err);
+      Swal.fire("Error", "Failed to verify payment. Please contact support if you were charged.", "error");
+    },
+  });
 
-      setPayments(Array.isArray(res.data) ? res.data : []);
-    } catch (err) {
-      if (err.name === "CanceledError") return;
-
-      console.error(err);
-      setError("Failed to load payments");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  /**
-   * Verify Stripe session + fetch payments
-   */
-  useEffect(() => {
-    if (!user?.email) return;
-
-    const controller = new AbortController();
-
-    const run = async () => {
-      try {
-        if (sessionId) {
-          await axios.post(`${API_BASE}/payments/verify`, {
-            sessionId,
-            email: user.email,
-          });
-        }
-
-        await fetchPayments(user.email, controller.signal);
-      } catch (err) {
-        console.error("Payment verification error:", err);
+  const checkoutMutation = useMutation({
+    mutationFn: () => api.post("/create-checkout-session", { cost: 100, userEmail: email }),
+    onSuccess: (res) => {
+      if (res.data?.url) {
+        window.location.href = res.data.url;
+      } else {
+        Swal.fire("Error", "Could not start checkout. Please try again.", "error");
       }
-    };
+    },
+    onError: (err) => {
+      console.error("Stripe error:", err);
+      Swal.fire("Error", "Could not start checkout. Please try again.", "error");
+    },
+  });
 
-    run();
-
-    return () => controller.abort();
-  }, [sessionId, user?.email]);
-
-  /**
-   * Fallback fetch when user changes
-   */
+  // Verify Stripe session exactly once when present.
   useEffect(() => {
-    if (!user?.email) return;
+    if (sessionId && email && !verifyMutation.isPending && !verifyMutation.isSuccess) {
+      verifyMutation.mutate();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sessionId, email]);
 
-    const controller = new AbortController();
-    fetchPayments(user.email, controller.signal);
+  const statusOptions = useMemo(
+    () => ["All", ...new Set(payments.map((p) => p.status).filter(Boolean))],
+    [payments]
+  );
+  const methodOptions = useMemo(
+    () => ["All", ...new Set(payments.map((p) => p.method).filter(Boolean))],
+    [payments]
+  );
 
-    return () => controller.abort();
-  }, [user?.email]);
+  const filteredPayments = useMemo(
+    () =>
+      payments
+        .filter((p) => (filterStatus === "All" ? true : p.status === filterStatus))
+        .filter((p) => (filterMethod === "All" ? true : p.method === filterMethod)),
+    [payments, filterStatus, filterMethod]
+  );
 
-  /**
-   * Filtered payments
-   */
-  const filteredPayments = useMemo(() => {
-    return payments
-      .filter((p) =>
-        filterStatus === "All" ? true : p.status === filterStatus
-      )
-      .filter((p) =>
-        filterMethod === "All" ? true : p.method === filterMethod
-      );
-  }, [payments, filterStatus, filterMethod]);
-
-  /**
-   * Chart aggregation
-   */
   const chartData = useMemo(() => {
     const grouped = {};
-
     filteredPayments.forEach((p) => {
       const month = new Date(p.createdAt).toLocaleString("default", {
         month: "short",
         year: "numeric",
       });
-
       grouped[month] = (grouped[month] || 0) + (p.amount || 0);
     });
-
-    return Object.entries(grouped).map(([month, amount]) => ({
-      month,
-      amount,
-    }));
+    return Object.entries(grouped).map(([month, amount]) => ({ month, amount }));
   }, [filteredPayments]);
 
-  /**
-   * Stripe checkout
-   */
-  const handlePayment = async () => {
-    if (!user?.email) return;
-
-    try {
-      const res = await axios.post(
-        `${API_BASE}/create-checkout-session`,
-        {
-          cost: 100,
-          userEmail: user.email,
-        }
-      );
-
-      if (res.data?.url) {
-        window.location.href = res.data.url;
-      } else {
-        console.error("Checkout URL missing");
-      }
-    } catch (err) {
-      console.error("Stripe error:", err);
-    }
-  };
-
-  if (!user?.email) {
-    return (
-      <p className="text-center py-10">Login first</p>
-    );
+  if (!email) {
+    return <p className="text-center py-10">Login first</p>;
   }
 
-  if (loading) {
-    return (
-      <div className="text-center py-10">Loading...</div>
-    );
+  if (isLoading) {
+    return <div className="text-center py-10">Loading...</div>;
   }
 
-  if (error) {
-    return (
-      <div className="text-center py-10 text-red-500">
-        {error}
-      </div>
-    );
+  if (isError) {
+    return <div className="text-center py-10 text-red-500">Failed to load payments</div>;
   }
 
   return (
     <div className="max-w-6xl mx-auto p-6">
-      <h2 className="text-3xl text-center font-bold mb-8 text-primary">
-        My Payments
-      </h2>
+      <h2 className="text-3xl text-center font-bold mb-8 text-primary">My Payments</h2>
 
-      {/* Controls */}
       <div className="flex gap-3 justify-center mb-6 flex-wrap">
         <button
-          onClick={handlePayment}
+          onClick={() => checkoutMutation.mutate()}
           className="btn btn-primary"
+          disabled={checkoutMutation.isPending}
         >
-          Pay Now
+          {checkoutMutation.isPending ? "Redirecting..." : "Pay Now"}
         </button>
 
-        <select
-          value={filterStatus}
-          onChange={(e) =>
-            setFilterStatus(e.target.value)
-          }
-          className="select"
-        >
-          <option>All</option>
-          <option>Paid</option>
+        <select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)} className="select">
+          {statusOptions.map((s) => (
+            <option key={s}>{s}</option>
+          ))}
         </select>
 
-        <select
-          value={filterMethod}
-          onChange={(e) =>
-            setFilterMethod(e.target.value)
-          }
-          className="select"
-        >
-          <option>All</option>
-          <option>Card</option>
+        <select value={filterMethod} onChange={(e) => setFilterMethod(e.target.value)} className="select">
+          {methodOptions.map((m) => (
+            <option key={m}>{m}</option>
+          ))}
         </select>
       </div>
 
-      {/* Chart */}
-      {filteredPayments.length > 0 && (
-        <PaymentsChart data={chartData} />
-      )}
+      {filteredPayments.length > 0 && <PaymentsChart data={chartData} />}
 
-      {/* Empty state */}
       {filteredPayments.length === 0 ? (
-        <p className="text-center mt-6">
-          No payments found
-        </p>
+        <p className="text-center mt-6">No payments found</p>
       ) : (
         <div className="overflow-x-auto mt-6">
           <table className="table">
@@ -260,33 +215,9 @@ const UserPayments = () => {
                 <th>Invoice</th>
               </tr>
             </thead>
-
             <tbody>
               {filteredPayments.map((p) => (
-                <tr key={p._id}>
-                  <td>
-                    {new Date(
-                      p.createdAt
-                    ).toLocaleDateString()}
-                  </td>
-                  <td>${p.amount}</td>
-                  <td>{p.transactionId}</td>
-                  <td>
-                    <span className="badge badge-success">
-                      {p.status}
-                    </span>
-                  </td>
-                  <td>
-                    <PDFDownloadLink
-                      document={
-                        <InvoicePDF payment={p} />
-                      }
-                      fileName={`Invoice-${p._id}.pdf`}
-                    >
-                      Download
-                    </PDFDownloadLink>
-                  </td>
-                </tr>
+                <PaymentRow key={p._id} payment={p} />
               ))}
             </tbody>
           </table>
