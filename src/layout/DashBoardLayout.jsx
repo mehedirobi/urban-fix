@@ -4,48 +4,12 @@ import useAuth from "../hooks/UseAuth";
 import Loader from "../components/Loader";
 
 const SIDEBAR_LINKS = [
-  // Common
-  {
-    to: "/dashboard/overview",
-    label: "Overview",
-    roles: ["citizen", "staff", "admin"],
-  },
-  {
-    to: "/dashboard/profile",
-    label: "My Profile",
-    roles: ["citizen", "staff", "admin"],
-  },
-  {
-    to: "/dashboard/my-payment",
-    label: "Payments",
-    roles: ["citizen", "staff", "admin"],
-  },
-
-  // Citizen
-  {
-    to: "/dashboard/my-issues",
-    label: "My Issues",
-    roles: ["citizen"],
-  },
-
-  // Staff
-  {
-    to: "/dashboard/assigned-issues",
-    label: "Assigned Issues",
-    roles: ["staff"],
-  },
-
-  // Admin
-  {
-    to: "/dashboard/manage-users",
-    label: "Manage Users",
-    roles: ["admin"],
-  },
-  {
-    to: "/dashboard/manage-issues",
-    label: "Manage Issues",
-    roles: ["admin"],
-  },
+  { to: "/dashboard", label: "Overview", roles: ["admin", "staff", "citizen"] },
+  { to: "/dashboard/my-issues", label: "My Issues", roles: ["citizen"] },
+  { to: "/dashboard/manage-users", label: "Manage Users", roles: ["admin"] },
+  { to: "/dashboard/manage-issues", label: "Manage Issues", roles: ["admin", "staff"] },
+  { to: "/dashboard/my-payment", label: "My Payment", roles: ["citizen"] },
+  { to: "/dashboard/profile", label: "My Profile", roles: ["admin", "staff", "citizen"] },
 ];
 
 const roleStyles = {
