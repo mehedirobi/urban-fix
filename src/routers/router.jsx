@@ -19,6 +19,8 @@ import PaymentSuccess from "../pages/PaymentSuccess";
 import PaymentCancel from "../pages/PaymentCancel";
 import Contact from "../pages/Contact";
 import Support from "../pages/Support";
+import Overview from "../pages/Overview";
+
 
 import PrivateRoute from "./PrivateRoute";
 
@@ -42,6 +44,7 @@ export const router = createBrowserRouter([
         element: <PrivateRoute><DashBoardLayout /></PrivateRoute>,
         children: [
           { path: "my-issues", element: <MyIssues /> },
+          { path: "overview", element: <Overview /> },
           { path: "my-payment", element: <UserPayments /> },
           { path: "profile", element: <UserProfile /> },
           { path: "edit-issue/:id", element: <EditIssue /> },
