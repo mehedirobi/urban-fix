@@ -1,5 +1,5 @@
 import React, { memo, useCallback, useId, useMemo } from "react";
-import { NavLink, Outlet } from "react-router-dom";
+import { NavLink, Outlet, useLocation } from "react-router-dom";
 import useAuth from "../hooks/UseAuth";
 import Loader from "../components/Loader";
 
@@ -8,7 +8,7 @@ const SIDEBAR_LINKS = [
   { to: "/dashboard/my-issues", label: "My Issues", roles: ["citizen"] },
   { to: "/dashboard/manage-users", label: "Manage Users", roles: ["admin"] },
   { to: "/dashboard/manage-issues", label: "Manage Issues", roles: ["admin", "staff"] },
-  { to: "/dashboard/my-payment", label: "My Payment", roles: ["citizen"] },
+  { to: "/dashboard/my-payment", label: "My Payments", roles: ["citizen"] },
   { to: "/dashboard/profile", label: "My Profile", roles: ["admin", "staff", "citizen"] },
 ];
 
@@ -16,6 +16,15 @@ const roleStyles = {
   admin: "badge-error",
   staff: "badge-warning",
   citizen: "badge-info",
+};
+
+const pageTitleMap = {
+  "/dashboard": "Overview",
+  "/dashboard/my-issues": "My Issues",
+  "/dashboard/manage-users": "Manage Users",
+  "/dashboard/manage-issues": "Manage Issues",
+  "/dashboard/my-payment": "My Payments",
+  "/dashboard/profile": "My Profile",
 };
 
 const getInitials = (name = "") => {
@@ -49,7 +58,7 @@ const HamburgerIcon = memo(function HamburgerIcon() {
 });
 
 const Sidebar = memo(function Sidebar({ links, drawerId, onNavigate, user, userRole }) {
-  const displayName = user?.name || user?.displayName || "UrbanFix User";
+  const displayName = user?.displayName || user?.name || "UrbanFix User";
   const email = user?.email || "";
   const photoURL = user?.photoURL || "";
 
@@ -94,10 +103,18 @@ const Sidebar = memo(function Sidebar({ links, drawerId, onNavigate, user, userR
               </div>
             </div>
 
-            <div className="mt-3">
+            <div className="mt-3 flex flex-wrap gap-2">
               <span className={`badge badge-sm capitalize ${roleStyles[userRole] || "badge-neutral"}`}>
                 {userRole}
               </span>
+
+              {user?.isPremium && (
+                <span className="badge badge-success badge-sm">Premium</span>
+              )}
+
+              {user?.isBlocked && (
+                <span className="badge badge-error badge-sm">Blocked</span>
+              )}
             </div>
           </div>
         </div>
@@ -122,7 +139,8 @@ const Sidebar = memo(function Sidebar({ links, drawerId, onNavigate, user, userR
         {/* Footer */}
         <div className="border-t border-base-300 px-4 py-4">
           <div className="rounded-xl bg-base-100 px-4 py-3 text-xs text-base-content/60">
-            Smart city issue management with <span className="font-semibold text-primary">UrbanFix</span>
+            Smart city issue management with{" "}
+            <span className="font-semibold text-primary">UrbanFix</span>
           </div>
         </div>
       </div>
@@ -133,8 +151,8 @@ const Sidebar = memo(function Sidebar({ links, drawerId, onNavigate, user, userR
 const DashBoardLayout = () => {
   const { user, loading } = useAuth();
   const drawerId = useId();
+  const location = useLocation();
 
-  // backend role should be: citizen | staff | admin
   const userRole = (user?.role || "citizen").toLowerCase().trim();
 
   const filteredLinks = useMemo(() => {
@@ -149,7 +167,21 @@ const DashBoardLayout = () => {
   if (loading) return <Loader />;
   if (!user) return null;
 
-  const displayName = user?.name || user?.displayName || "UrbanFix User";
+  if (user?.isBlocked) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-base-100 p-6">
+        <div className="max-w-md w-full rounded-2xl border border-red-200 bg-base-100 p-8 shadow-xl text-center">
+          <h2 className="text-2xl font-bold text-red-500">Account Blocked</h2>
+          <p className="mt-3 text-sm text-base-content/70">
+            Your account has been blocked by the admin. Please contact support to continue using UrbanFix.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  const displayName = user?.displayName || user?.name || "UrbanFix User";
+  const pageTitle = pageTitleMap[location.pathname] || "Dashboard";
 
   return (
     <div className="drawer lg:drawer-open min-h-screen bg-base-100">
@@ -172,7 +204,7 @@ const DashBoardLayout = () => {
 
             <div className="flex-1">
               <div>
-                <h1 className="text-xl font-bold lg:text-2xl">Dashboard</h1>
+                <h1 className="text-xl font-bold lg:text-2xl">{pageTitle}</h1>
                 <p className="text-xs text-base-content/60 lg:text-sm">
                   Welcome back, {displayName}
                 </p>

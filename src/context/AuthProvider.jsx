@@ -1,6 +1,5 @@
-import React, { useEffect, useState, useMemo } from "react";
+import React, { useEffect, useMemo, useState, useCallback } from "react";
 import { AuthContext } from "./AuthContext";
-
 import {
   createUserWithEmailAndPassword,
   GoogleAuthProvider,
@@ -10,20 +9,20 @@ import {
   signOut,
   updateProfile,
 } from "firebase/auth";
-
 import { auth } from "../firebase/firebase.init";
 import Swal from "sweetalert2";
 import axios from "axios";
 import useAxiosSecure from "../hooks/useAxiosSecure";
 
 const AuthProvider = ({ children }) => {
-  const [firebaseUser, setFirebaseUser] = useState(null);
-  const [dbUser, setDbUser] = useState(null);
+  const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
 
   const axiosSecure = useAxiosSecure();
 
-  // Google provider
+  // =========================
+  // GOOGLE PROVIDER
+  // =========================
   const googleProvider = useMemo(() => {
     const provider = new GoogleAuthProvider();
     provider.setCustomParameters({ prompt: "select_account" });
@@ -31,38 +30,107 @@ const AuthProvider = ({ children }) => {
   }, []);
 
   // =========================
-  // SAVE / SYNC USER TO DB
+  // HELPERS
   // =========================
-  const saveUserToDB = async (firebaseUser) => {
-    if (!firebaseUser?.email) return;
+  const normalizeEmail = (email = "") => email.toLowerCase().trim();
 
-    const payload = {
-      email: firebaseUser.email,
-      name: firebaseUser.displayName || "User",
-      photoURL: firebaseUser.photoURL || "",
+  const buildAppUser = useCallback((firebaseUser, dbUser = null) => {
+    if (!firebaseUser) return null;
+
+    return {
+      uid: firebaseUser.uid,
+      email: normalizeEmail(firebaseUser.email || dbUser?.email || ""),
+      displayName:
+        dbUser?.name || firebaseUser.displayName || "UrbanFix User",
+      name: dbUser?.name || firebaseUser.displayName || "UrbanFix User",
+      photoURL: dbUser?.photoURL || firebaseUser.photoURL || "",
+      phone: dbUser?.phone || "",
+      role: (dbUser?.role || "citizen").toLowerCase().trim(),
+      isBlocked: Boolean(dbUser?.isBlocked),
+      isPremium: Boolean(dbUser?.isPremium),
+      createdAt: dbUser?.createdAt || null,
+      updatedAt: dbUser?.updatedAt || null,
+      providerData: firebaseUser.providerData || [],
     };
-
-    try {
-      await axiosSecure.post("/users", payload);
-    } catch (err) {
-      console.error("User sync failed:", err);
-    }
-  };
+  }, []);
 
   // =========================
-  // FETCH USER FROM DB
+  // SAVE USER TO DB
   // =========================
-  const fetchDBUser = async (email) => {
-    if (!email) return null;
+  const saveUserToDB = useCallback(
+    async (firebaseUser) => {
+      if (!firebaseUser?.email) return null;
 
-    try {
-      const res = await axiosSecure.get(`/users/${email}`);
-      return res.data;
-    } catch (error) {
-      console.error("Failed to fetch DB user:", error);
-      return null;
-    }
-  };
+      const payload = {
+        email: normalizeEmail(firebaseUser.email),
+        name: firebaseUser.displayName || "User",
+        photoURL: firebaseUser.photoURL || "",
+      };
+
+      try {
+        const res = await axiosSecure.post("/users", payload);
+        return res.data;
+      } catch (err) {
+        console.error("User sync failed:", err);
+        return null;
+      }
+    },
+    [axiosSecure]
+  );
+
+  // =========================
+  // GET USER FROM DB
+  // =========================
+  const getUserFromDB = useCallback(
+    async (email) => {
+      if (!email) return null;
+
+      try {
+        const res = await axiosSecure.get(`/users/${normalizeEmail(email)}`);
+        return res.data;
+      } catch (err) {
+        console.error("Failed to fetch user from DB:", err);
+        return null;
+      }
+    },
+    [axiosSecure]
+  );
+
+  // =========================
+  // SYNC USER + FETCH DB USER
+  // =========================
+  const syncAndGetDBUser = useCallback(
+    async (firebaseUser) => {
+      if (!firebaseUser?.email) return null;
+
+      // ensure user exists / updates in DB
+      await saveUserToDB(firebaseUser);
+
+      // fetch latest DB user with role + extra fields
+      const dbUser = await getUserFromDB(firebaseUser.email);
+      return dbUser;
+    },
+    [saveUserToDB, getUserFromDB]
+  );
+
+  // =========================
+  // HANDLE BLOCKED USER
+  // =========================
+  const handleBlockedUser = useCallback(async (dbUser) => {
+    if (!dbUser?.isBlocked) return false;
+
+    await signOut(auth);
+    setUser(null);
+
+    Swal.fire({
+      icon: "error",
+      title: "Account Blocked",
+      text: "Your account has been blocked. Please contact support.",
+      confirmButtonColor: "#ef4444",
+    });
+
+    return true;
+  }, []);
 
   // =========================
   // REGISTER
@@ -71,15 +139,11 @@ const AuthProvider = ({ children }) => {
     setLoading(true);
 
     try {
-      const result = await createUserWithEmailAndPassword(
-        auth,
-        email,
-        password
-      );
+      const result = await createUserWithEmailAndPassword(auth, email, password);
 
       let photoURL = "";
 
-      // Upload image if exists
+      // optional profile image upload
       if (profileImgFile) {
         const formData = new FormData();
         formData.append("image", profileImgFile);
@@ -92,27 +156,33 @@ const AuthProvider = ({ children }) => {
         photoURL = imgRes.data?.data?.url || "";
       }
 
-      // Update Firebase profile
       await updateProfile(result.user, {
         displayName: name,
         photoURL,
       });
 
-      // Fresh firebase user object
-      const updatedFirebaseUser = {
-        ...result.user,
+      // Firebase current user reload for latest profile
+      await auth.currentUser?.reload();
+      const firebaseUser = auth.currentUser || result.user;
+
+      const dbUser = await syncAndGetDBUser({
+        ...firebaseUser,
         displayName: name,
         photoURL,
-      };
+      });
 
-      // Save to DB
-      await saveUserToDB(updatedFirebaseUser);
+      if (await handleBlockedUser(dbUser)) return null;
 
-      // Fetch DB user after save
-      const dbUserData = await fetchDBUser(updatedFirebaseUser.email);
+      const mergedUser = buildAppUser(
+        {
+          ...firebaseUser,
+          displayName: name,
+          photoURL,
+        },
+        dbUser
+      );
 
-      setFirebaseUser(updatedFirebaseUser);
-      setDbUser(dbUserData);
+      setUser(mergedUser);
 
       Swal.fire({
         icon: "success",
@@ -121,7 +191,7 @@ const AuthProvider = ({ children }) => {
         showConfirmButton: false,
       });
 
-      return updatedFirebaseUser;
+      return mergedUser;
     } catch (err) {
       Swal.fire({
         icon: "error",
@@ -142,14 +212,16 @@ const AuthProvider = ({ children }) => {
 
     try {
       const result = await signInWithEmailAndPassword(auth, email, password);
+      const firebaseUser = result.user;
 
-      await saveUserToDB(result.user);
-      const dbUserData = await fetchDBUser(result.user.email);
+      const dbUser = await syncAndGetDBUser(firebaseUser);
 
-      setFirebaseUser(result.user);
-      setDbUser(dbUserData);
+      if (await handleBlockedUser(dbUser)) return null;
 
-      return result.user;
+      const mergedUser = buildAppUser(firebaseUser, dbUser);
+      setUser(mergedUser);
+
+      return mergedUser;
     } catch (err) {
       Swal.fire({
         icon: "error",
@@ -170,14 +242,16 @@ const AuthProvider = ({ children }) => {
 
     try {
       const result = await signInWithPopup(auth, googleProvider);
+      const firebaseUser = result.user;
 
-      await saveUserToDB(result.user);
-      const dbUserData = await fetchDBUser(result.user.email);
+      const dbUser = await syncAndGetDBUser(firebaseUser);
 
-      setFirebaseUser(result.user);
-      setDbUser(dbUserData);
+      if (await handleBlockedUser(dbUser)) return null;
 
-      return result.user;
+      const mergedUser = buildAppUser(firebaseUser, dbUser);
+      setUser(mergedUser);
+
+      return mergedUser;
     } catch (err) {
       Swal.fire({
         icon: "error",
@@ -193,22 +267,23 @@ const AuthProvider = ({ children }) => {
   // =========================
   // LOGOUT
   // =========================
-  const logout = async () => {
+  const logout = async (showAlert = true) => {
     setLoading(true);
 
     try {
       await signOut(auth);
-      setFirebaseUser(null);
-      setDbUser(null);
+      setUser(null);
 
-      Swal.fire({
-        icon: "success",
-        title: "Logged out",
-        timer: 1200,
-        showConfirmButton: false,
-      });
+      if (showAlert) {
+        Swal.fire({
+          icon: "success",
+          title: "Logged out",
+          timer: 1200,
+          showConfirmButton: false,
+        });
+      }
     } catch (err) {
-      console.error(err);
+      console.error("Logout failed:", err);
     } finally {
       setLoading(false);
     }
@@ -218,16 +293,27 @@ const AuthProvider = ({ children }) => {
   // REFRESH USER
   // =========================
   const refreshUser = async () => {
-    if (!auth.currentUser) return;
+    if (!auth.currentUser?.email) return null;
 
-    await auth.currentUser.reload();
-    const refreshedFirebaseUser = auth.currentUser;
+    try {
+      setLoading(true);
 
-    setFirebaseUser(refreshedFirebaseUser);
+      await auth.currentUser.reload();
+      const firebaseUser = auth.currentUser;
 
-    if (refreshedFirebaseUser?.email) {
-      const dbUserData = await fetchDBUser(refreshedFirebaseUser.email);
-      setDbUser(dbUserData);
+      const dbUser = await getUserFromDB(firebaseUser.email);
+
+      if (await handleBlockedUser(dbUser)) return null;
+
+      const mergedUser = buildAppUser(firebaseUser, dbUser);
+      setUser(mergedUser);
+
+      return mergedUser;
+    } catch (error) {
+      console.error("Refresh user failed:", error);
+      return null;
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -238,46 +324,32 @@ const AuthProvider = ({ children }) => {
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
       setLoading(true);
 
-      if (!currentUser) {
-        setFirebaseUser(null);
-        setDbUser(null);
+      try {
+        if (!currentUser) {
+          setUser(null);
+          setLoading(false);
+          return;
+        }
+
+        const dbUser = await syncAndGetDBUser(currentUser);
+
+        if (await handleBlockedUser(dbUser)) {
+          setLoading(false);
+          return;
+        }
+
+        const mergedUser = buildAppUser(currentUser, dbUser);
+        setUser(mergedUser);
+      } catch (error) {
+        console.error("Auth state sync error:", error);
+        setUser(null);
+      } finally {
         setLoading(false);
-        return;
       }
-
-      setFirebaseUser(currentUser);
-
-      // ensure user exists in DB
-      await saveUserToDB(currentUser);
-
-      // fetch DB user
-      const dbUserData = await fetchDBUser(currentUser.email);
-      setDbUser(dbUserData);
-
-      setLoading(false);
     });
 
     return () => unsubscribe();
-  }, []);
-
-  // =========================
-  // MERGED FINAL USER
-  // =========================
-  const user = useMemo(() => {
-    if (!firebaseUser) return null;
-
-    return {
-      uid: firebaseUser.uid,
-      email: firebaseUser.email,
-      displayName: dbUser?.name || firebaseUser.displayName || "User",
-      photoURL: dbUser?.photoURL || firebaseUser.photoURL || "",
-      role: dbUser?.role || "citizen",
-      phone: dbUser?.phone || "",
-      isBlocked: dbUser?.isBlocked || false,
-      isPremium: dbUser?.isPremium || false,
-      createdAt: dbUser?.createdAt || null,
-    };
-  }, [firebaseUser, dbUser]);
+  }, [syncAndGetDBUser, buildAppUser, handleBlockedUser]);
 
   // =========================
   // CONTEXT VALUE
@@ -291,9 +363,8 @@ const AuthProvider = ({ children }) => {
       signInGoogle,
       logout,
       refreshUser,
-      dbUser,
     }),
-    [user, loading, dbUser]
+    [user, loading]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
