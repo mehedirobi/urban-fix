@@ -238,14 +238,6 @@ const Register = () => {
           </button>
         </form>
 
-        <button
-          onClick={handleDemoLogin}
-          className="btn btn-outline btn-primary w-full mt-3 text-sm"
-          disabled={loading}
-        >
-          Demo Login
-        </button>
-
         <p className="text-center mt-4 text-base-content">
           Already have an account?{" "}
           <Link to="/login" className="text-primary font-semibold hover:underline">

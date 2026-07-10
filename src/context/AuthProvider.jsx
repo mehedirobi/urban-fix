@@ -103,10 +103,7 @@ const AuthProvider = ({ children }) => {
     async (firebaseUser) => {
       if (!firebaseUser?.email) return null;
 
-      // ensure user exists / updates in DB
       await saveUserToDB(firebaseUser);
-
-      // fetch latest DB user with role + extra fields
       const dbUser = await getUserFromDB(firebaseUser.email);
       return dbUser;
     },
@@ -143,7 +140,6 @@ const AuthProvider = ({ children }) => {
 
       let photoURL = "";
 
-      // optional profile image upload
       if (profileImgFile) {
         const formData = new FormData();
         formData.append("image", profileImgFile);
@@ -161,7 +157,6 @@ const AuthProvider = ({ children }) => {
         photoURL,
       });
 
-      // Firebase current user reload for latest profile
       await auth.currentUser?.reload();
       const firebaseUser = auth.currentUser || result.user;
 
@@ -322,8 +317,6 @@ const AuthProvider = ({ children }) => {
   // =========================
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
-      setLoading(true);
-
       try {
         if (!currentUser) {
           setUser(null);
@@ -351,9 +344,6 @@ const AuthProvider = ({ children }) => {
     return () => unsubscribe();
   }, [syncAndGetDBUser, buildAppUser, handleBlockedUser]);
 
-  // =========================
-  // CONTEXT VALUE
-  // =========================
   const value = useMemo(
     () => ({
       user,
