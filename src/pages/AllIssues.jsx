@@ -113,7 +113,7 @@ const AllIssues = () => {
     setFetchError(null);
     try {
       const res = await axiosSecure.get("/issues", { params: { limit: 200 } });
-      const list = Array.isArray(res.data) ? res.data.filter((i) => i?._id) : [];
+      const list = Array.isArray(res.data?.data) ? res.data.data.filter((i) => i?._id) : [];
       setIssues(list);
     } catch (err) {
       console.error("Issue Fetch Failed!", err);

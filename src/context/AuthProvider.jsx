@@ -34,6 +34,24 @@ const AuthProvider = ({ children }) => {
   // =========================
   const normalizeEmail = (email = "") => email.toLowerCase().trim();
 
+  // 🔑 Save Firebase ID token to localStorage so axiosSecure can attach it
+  const saveFirebaseToken = useCallback(async (firebaseUser) => {
+    if (!firebaseUser) return null;
+
+    try {
+      const token = await firebaseUser.getIdToken(true);
+      localStorage.setItem("access-token", token);
+      return token;
+    } catch (error) {
+      console.error("Failed to save Firebase token:", error);
+      return null;
+    }
+  }, []);
+
+  const clearFirebaseToken = useCallback(() => {
+    localStorage.removeItem("access-token");
+  }, []);
+
   const buildAppUser = useCallback((firebaseUser, dbUser = null) => {
     if (!firebaseUser) return null;
 
@@ -103,31 +121,39 @@ const AuthProvider = ({ children }) => {
     async (firebaseUser) => {
       if (!firebaseUser?.email) return null;
 
+      // ✅ token localStorage-e save howa nishchit kora hocche
+      // je kono DB call (post/get) korar age
+      await saveFirebaseToken(firebaseUser);
+
       await saveUserToDB(firebaseUser);
       const dbUser = await getUserFromDB(firebaseUser.email);
       return dbUser;
     },
-    [saveUserToDB, getUserFromDB]
+    [saveFirebaseToken, saveUserToDB, getUserFromDB]
   );
 
   // =========================
   // HANDLE BLOCKED USER
   // =========================
-  const handleBlockedUser = useCallback(async (dbUser) => {
-    if (!dbUser?.isBlocked) return false;
+  const handleBlockedUser = useCallback(
+    async (dbUser) => {
+      if (!dbUser?.isBlocked) return false;
 
-    await signOut(auth);
-    setUser(null);
+      await signOut(auth);
+      clearFirebaseToken();
+      setUser(null);
 
-    Swal.fire({
-      icon: "error",
-      title: "Account Blocked",
-      text: "Your account has been blocked. Please contact support.",
-      confirmButtonColor: "#ef4444",
-    });
+      Swal.fire({
+        icon: "error",
+        title: "Account Blocked",
+        text: "Your account has been blocked. Please contact support.",
+        confirmButtonColor: "#ef4444",
+      });
 
-    return true;
-  }, []);
+      return true;
+    },
+    [clearFirebaseToken]
+  );
 
   // =========================
   // REGISTER
@@ -159,6 +185,9 @@ const AuthProvider = ({ children }) => {
 
       await auth.currentUser?.reload();
       const firebaseUser = auth.currentUser || result.user;
+
+      // ✅ token save (registration flow-e explicit call, safety-r jonno)
+      await saveFirebaseToken(firebaseUser);
 
       const dbUser = await syncAndGetDBUser({
         ...firebaseUser,
@@ -209,6 +238,9 @@ const AuthProvider = ({ children }) => {
       const result = await signInWithEmailAndPassword(auth, email, password);
       const firebaseUser = result.user;
 
+      // ✅ token save
+      await saveFirebaseToken(firebaseUser);
+
       const dbUser = await syncAndGetDBUser(firebaseUser);
 
       if (await handleBlockedUser(dbUser)) return null;
@@ -239,6 +271,9 @@ const AuthProvider = ({ children }) => {
       const result = await signInWithPopup(auth, googleProvider);
       const firebaseUser = result.user;
 
+      // ✅ token save
+      await saveFirebaseToken(firebaseUser);
+
       const dbUser = await syncAndGetDBUser(firebaseUser);
 
       if (await handleBlockedUser(dbUser)) return null;
@@ -267,6 +302,7 @@ const AuthProvider = ({ children }) => {
 
     try {
       await signOut(auth);
+      clearFirebaseToken(); // ✅ token clear
       setUser(null);
 
       if (showAlert) {
@@ -296,6 +332,9 @@ const AuthProvider = ({ children }) => {
       await auth.currentUser.reload();
       const firebaseUser = auth.currentUser;
 
+      // ✅ token refresh + save
+      await saveFirebaseToken(firebaseUser);
+
       const dbUser = await getUserFromDB(firebaseUser.email);
 
       if (await handleBlockedUser(dbUser)) return null;
@@ -319,10 +358,14 @@ const AuthProvider = ({ children }) => {
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
       try {
         if (!currentUser) {
+          clearFirebaseToken(); // ✅ logged out obosthay token clear thakbe
           setUser(null);
           setLoading(false);
           return;
         }
+
+        // ✅ token save — DB call korar AGE, sobar age
+        await saveFirebaseToken(currentUser);
 
         const dbUser = await syncAndGetDBUser(currentUser);
 
@@ -342,7 +385,7 @@ const AuthProvider = ({ children }) => {
     });
 
     return () => unsubscribe();
-  }, [syncAndGetDBUser, buildAppUser, handleBlockedUser]);
+  }, [saveFirebaseToken, clearFirebaseToken, syncAndGetDBUser, buildAppUser, handleBlockedUser]);
 
   const value = useMemo(
     () => ({
