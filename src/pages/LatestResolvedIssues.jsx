@@ -86,7 +86,9 @@ const LatestResolvedIssues = () => {
       setError(null);
 
       const res = await axios.get(`${API_URL}/issues`, { signal });
-      const data = Array.isArray(res.data) ? res.data : [];
+      const data = Array.isArray(res.data?.data)
+  ? res.data.data
+  : [];
 
       const resolvedIssues = data
         .filter((issue) => issue?.status === "Resolved")

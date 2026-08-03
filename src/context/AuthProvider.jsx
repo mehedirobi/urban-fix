@@ -295,7 +295,7 @@ const AuthProvider = ({ children }) => {
   };
 
   // =========================
-  // LOGOUT
+  // LOGOUT function
   // =========================
   const logout = async (showAlert = true) => {
     setLoading(true);
