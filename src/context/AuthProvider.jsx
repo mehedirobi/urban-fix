@@ -320,9 +320,9 @@ const AuthProvider = ({ children }) => {
     }
   };
 
-  // =========================
+  
   // REFRESH USER
-  // =========================
+  
   const refreshUser = async () => {
     if (!auth.currentUser?.email) return null;
 
