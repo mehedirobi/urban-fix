@@ -351,9 +351,8 @@ const AuthProvider = ({ children }) => {
     }
   };
 
-  // =========================
+  
   // AUTH STATE LISTENER
-  // =========================
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
       try {
