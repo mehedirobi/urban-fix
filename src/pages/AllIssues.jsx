@@ -47,7 +47,7 @@ const SkeletonCard = () => (
   </div>
 );
 
-// Windowed pagination: 1 ... 4 5 [6] 7 8 ... 20 instead of one button per page
+// Windowed pagination: 1 ... 4 5 [6] 7 8 ... 20 
 const buildPageWindow = (current, total) => {
   const delta = 1;
   const range = [];
