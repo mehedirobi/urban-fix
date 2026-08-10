@@ -99,7 +99,7 @@ const AllIssues = () => {
   const [priority, setPriority] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
 
-  // Debounce search input -> search value used for filtering
+  
   useEffect(() => {
     const t = setTimeout(() => {
       setSearch(searchInput);
