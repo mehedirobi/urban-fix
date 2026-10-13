@@ -1,33 +1,72 @@
-import React, { useMemo, useState, useEffect, useRef, useCallback } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, NavLink, useLocation } from "react-router-dom";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import Swal from "sweetalert2";
 
-import { HiOutlineMenuAlt3, HiOutlineX, HiOutlineUser, HiOutlineLogout } from "react-icons/hi";
+import {
+  HiOutlineMenuAlt3,
+  HiOutlineX,
+  HiOutlineUser,
+  HiOutlineLogout,
+} from "react-icons/hi";
 import { FaTools } from "react-icons/fa";
 
 import UseAuth from "../hooks/UseAuth";
 import DarkModeToggle from "./DarkModeToggle";
 
-const FALLBACK_AVATAR = "https://i.ibb.co/4pDNDk1/avatar.png";
+const PUBLIC_ROUTES = [
+  { name: "Home", path: "/" },
+  { name: "All Issues", path: "/all-issues" },
+  { name: "About Us", path: "/about-us" },
+  { name: "Contact", path: "/contact" },
+  { name: "Support", path: "/support" },
+];
 
-// Closes a menu on outside click or Escape
-const useClickOutside = (ref, onClose, active) => {
+const AUTH_ROUTES = [
+  { name: "Report Issue", path: "/create-issue" },
+  { name: "Dashboard", path: "/dashboard" },
+];
+
+const NAV_TRANSITION = {
+  type: "tween",
+  duration: 0.25,
+  ease: "easeOut",
+};
+
+const useClickOutside = (
+  ref,
+  onClose,
+  active,
+  ignoredRef = null
+) => {
   useEffect(() => {
     if (!active) return;
-    const handlePointer = (e) => {
-      if (ref.current && !ref.current.contains(e.target)) onClose();
+
+    const handlePointerDown = (event) => {
+      const target = event.target;
+
+      if (
+        ref.current?.contains(target) ||
+        ignoredRef?.current?.contains(target)
+      ) {
+        return;
+      }
+
+      onClose();
     };
-    const handleKey = (e) => {
-      if (e.key === "Escape") onClose();
+
+    const handleKeyDown = (event) => {
+      if (event.key === "Escape") onClose();
     };
-    document.addEventListener("mousedown", handlePointer);
-    document.addEventListener("keydown", handleKey);
+
+    document.addEventListener("pointerdown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+
     return () => {
-      document.removeEventListener("mousedown", handlePointer);
-      document.removeEventListener("keydown", handleKey);
+      document.removeEventListener("pointerdown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
     };
-  }, [ref, onClose, active]);
+  }, [ref, ignoredRef, onClose, active]);
 };
 
 const Navbar = () => {
@@ -39,260 +78,444 @@ const Navbar = () => {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const [avatarError, setAvatarError] = useState(false);
+  const [loggingOut, setLoggingOut] = useState(false);
 
   const profileRef = useRef(null);
   const mobileRef = useRef(null);
+  const mobileButtonRef = useRef(null);
 
-  useClickOutside(profileRef, () => setProfileOpen(false), profileOpen);
-  useClickOutside(mobileRef, () => setMobileOpen(false), mobileOpen);
-
-  // Track scroll to shrink navbar + intensify blur
-  useEffect(() => {
-    const onScroll = () => setScrolled(window.scrollY > 8);
-    onScroll();
-    window.addEventListener("scroll", onScroll, { passive: true });
-    return () => window.removeEventListener("scroll", onScroll);
+  const closeProfile = useCallback(() => {
+    setProfileOpen(false);
   }, []);
 
-  // Close mobile menu on route change
+  const closeMobile = useCallback(() => {
+    setMobileOpen(false);
+  }, []);
+
+  useClickOutside(profileRef, closeProfile, profileOpen);
+
+  useClickOutside(
+    mobileRef,
+    closeMobile,
+    mobileOpen,
+    mobileButtonRef
+  );
+
+  // Track scrolling without unnecessary state updates.
+  useEffect(() => {
+    const handleScroll = () => {
+      const nextScrolled = window.scrollY > 8;
+
+      setScrolled((previous) =>
+        previous === nextScrolled ? previous : nextScrolled
+      );
+    };
+
+    handleScroll();
+
+    window.addEventListener("scroll", handleScroll, {
+      passive: true,
+    });
+
+    return () => {
+      window.removeEventListener("scroll", handleScroll);
+    };
+  }, []);
+
+  // Close menus when navigation changes.
   useEffect(() => {
     setMobileOpen(false);
     setProfileOpen(false);
   }, [location.pathname]);
 
+  // Reset avatar fallback when the authenticated user changes.
+  useEffect(() => {
+    setAvatarError(false);
+  }, [user?.uid, user?.photoURL]);
+
+  const menuItems = user
+    ? [...PUBLIC_ROUTES, ...AUTH_ROUTES]
+    : PUBLIC_ROUTES;
+
   const handleLogout = async () => {
+    if (loggingOut) return;
+
+    setLoggingOut(true);
+
     try {
       await logout();
+
       setProfileOpen(false);
-      Swal.fire({
+      setMobileOpen(false);
+
+      await Swal.fire({
         icon: "success",
         title: "Logged out successfully",
         timer: 1500,
         showConfirmButton: false,
       });
     } catch (error) {
-      console.error(error);
-      Swal.fire({
+      console.error("Logout failed:", error);
+
+      await Swal.fire({
         icon: "error",
-        title: "Something went wrong",
+        title: "Logout failed",
         text: "Please try again.",
-        timer: 2000,
-        showConfirmButton: false,
+        confirmButtonText: "Try again",
       });
+    } finally {
+      setLoggingOut(false);
     }
   };
 
-  const baseRoutes = useMemo(
-    () => [
-      { name: "Home", path: "/" },
-      { name: "All Issues", path: "/all-issues" },
-      { name: "About Us", path: "/about-us" },
-      { name: "Contact", path: "/contact" },
-      { name: "Support", path: "/support" },
-    ],
-    []
-  );
+  const getLinkClass = ({ isActive }) =>
+    [
+      "relative z-10 block rounded-full px-3 xl:px-4 py-2",
+      "text-sm font-medium transition-colors duration-200",
+      "focus-visible:outline-none focus-visible:ring-2",
+      "focus-visible:ring-primary focus-visible:ring-offset-2",
+      isActive
+        ? "text-primary-content"
+        : "text-base-content/75 hover:text-base-content",
+    ].join(" ");
 
-  const authRoutes = useMemo(
-    () =>
-      user
-        ? [
-            { name: "Report Issue", path: "/create-issue" },
-            { name: "Dashboard", path: "/dashboard" },
-          ]
-        : [],
-    [user]
-  );
+  const getMobileLinkClass = ({ isActive }) =>
+    [
+      "block rounded-xl px-4 py-3 text-sm font-medium",
+      "transition-colors duration-200",
+      "focus-visible:outline-none focus-visible:ring-2",
+      "focus-visible:ring-primary",
+      isActive
+        ? "bg-primary text-primary-content"
+        : "text-base-content hover:bg-base-200",
+    ].join(" ");
 
-  const menuItems = useMemo(() => [...baseRoutes, ...authRoutes], [baseRoutes, authRoutes]);
+  const avatarUrl = user?.photoURL;
 
-  const isActiveRoute = useCallback(
-    (path) => (path === "/" ? location.pathname === "/" : location.pathname.startsWith(path)),
-    [location.pathname]
-  );
-
-  const navTransition = prefersReducedMotion ? { duration: 0 } : { duration: 0.5, ease: "easeOut" };
+  const navbarTransition = prefersReducedMotion
+    ? { duration: 0 }
+    : NAV_TRANSITION;
 
   return (
     <>
       <motion.nav
-        initial={{ y: -80 }}
-        animate={{ y: 0 }}
-        transition={navTransition}
-        className={`fixed top-0 left-0 right-0 z-50 border-b transition-colors duration-300 ${
+        initial={prefersReducedMotion ? false : { y: -20, opacity: 0 }}
+        animate={{ y: 0, opacity: 1 }}
+        transition={navbarTransition}
+        aria-label="Main navigation"
+        className={[
+          "fixed inset-x-0 top-0 z-50 border-b",
+          "transition-[background-color,border-color,box-shadow]",
+          "duration-300",
           scrolled
-            ? "bg-base-100/90 backdrop-blur-xl border-base-300 shadow-sm"
-            : "bg-base-100/60 backdrop-blur-md border-transparent"
-        }`}
+            ? "border-base-300 bg-base-100/95 shadow-sm backdrop-blur-xl"
+            : "border-transparent bg-base-100/80 backdrop-blur-md",
+        ].join(" ")}
       >
-        <div className="max-w-7xl mx-auto px-4 lg:px-8">
+        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
           <div
-            className={`flex items-center justify-between transition-[height] duration-300 ${
-              scrolled ? "h-14" : "h-16"
-            }`}
+            className={[
+              "flex items-center justify-between gap-3",
+              "transition-[height] duration-300",
+              scrolled ? "h-14" : "h-16",
+            ].join(" ")}
           >
-            {/* LEFT: Logo + mobile trigger */}
-            <div className="flex items-center gap-2">
+            {/* Logo and mobile menu */}
+            <div className="flex min-w-0 items-center gap-2">
               <button
+                ref={mobileButtonRef}
                 type="button"
                 aria-label={mobileOpen ? "Close menu" : "Open menu"}
                 aria-expanded={mobileOpen}
-                onClick={() => setMobileOpen((v) => !v)}
-                className="lg:hidden inline-flex items-center justify-center w-10 h-10 rounded-full hover:bg-base-200 active:scale-95 transition"
+                aria-controls="mobile-navigation"
+                onClick={() => setMobileOpen((previous) => !previous)}
+                className={[
+                  "inline-flex h-10 w-10 shrink-0 items-center",
+                  "justify-center rounded-full lg:hidden",
+                  "text-base-content transition-colors",
+                  "hover:bg-base-200 active:scale-95",
+                  "focus-visible:outline-none focus-visible:ring-2",
+                  "focus-visible:ring-primary",
+                ].join(" ")}
               >
-                {mobileOpen ? <HiOutlineX size={22} /> : <HiOutlineMenuAlt3 size={22} />}
+                {mobileOpen ? (
+                  <HiOutlineX size={22} aria-hidden="true" />
+                ) : (
+                  <HiOutlineMenuAlt3 size={22} aria-hidden="true" />
+                )}
               </button>
 
               <Link
                 to="/"
-                className="flex items-center gap-2 text-xl sm:text-2xl font-extrabold tracking-tight group"
+                aria-label="UrbanFix home"
+                className={[
+                  "group flex min-w-0 items-center gap-2",
+                  "rounded-lg font-extrabold tracking-tight",
+                  "text-xl sm:text-2xl",
+                  "focus-visible:outline-none focus-visible:ring-2",
+                  "focus-visible:ring-primary",
+                ].join(" ")}
               >
-                <FaTools className="text-primary text-2xl sm:text-3xl transition-transform duration-300 group-hover:rotate-12" />
-                <span>
+                <FaTools
+                  aria-hidden="true"
+                  className={[
+                    "shrink-0 text-primary",
+                    "text-2xl sm:text-3xl",
+                    "transition-transform duration-300",
+                    "group-hover:rotate-12",
+                  ].join(" ")}
+                />
+
+                <span className="whitespace-nowrap">
                   Urban<span className="text-primary">Fix</span>
                 </span>
               </Link>
             </div>
 
-            {/* DESKTOP NAV with sliding pill indicator */}
-            <ul className="hidden lg:flex items-center gap-1 relative">
-              {menuItems.map((item) => {
-                const active = isActiveRoute(item.path);
-                return (
-                  <li key={item.path} className="relative">
-                    <NavLink
-                      to={item.path}
-                      end={item.path === "/"}
-                      aria-current={active ? "page" : undefined}
-                      className={`relative z-10 block px-4 py-2 text-sm font-medium rounded-full transition-colors duration-200 ${
-                        active ? "text-primary-content" : "text-base-content/70 hover:text-base-content"
-                      }`}
-                    >
-                      {item.name}
-                    </NavLink>
-                    {active && (
-                      <motion.span
-                        layoutId="activePill"
-                        transition={{ type: "spring", stiffness: 380, damping: 32 }}
-                        className="absolute inset-0 bg-primary rounded-full"
-                      />
+            {/* Desktop navigation */}
+            <ul className="hidden items-center gap-1 lg:flex">
+              {menuItems.map((item) => (
+                <li key={item.path} className="relative">
+                  <NavLink
+                    to={item.path}
+                    end={item.path === "/"}
+                    className={getLinkClass}
+                  >
+                    {({ isActive }) => (
+                      <>
+                        {isActive && (
+                          <motion.span
+                            layoutId="urbanfix-active-pill"
+                            aria-hidden="true"
+                            transition={
+                              prefersReducedMotion
+                                ? { duration: 0 }
+                                : {
+                                    type: "spring",
+                                    stiffness: 380,
+                                    damping: 32,
+                                  }
+                            }
+                            className="absolute inset-0 -z-10 rounded-full bg-primary"
+                          />
+                        )}
+
+                        {item.name}
+                      </>
                     )}
-                  </li>
-                );
-              })}
+                  </NavLink>
+                </li>
+              ))}
             </ul>
 
-            {/* RIGHT */}
-            <div className="flex items-center gap-2 sm:gap-3">
+            {/* Account actions */}
+            <div className="flex shrink-0 items-center gap-2 sm:gap-3">
               <DarkModeToggle />
 
               {user ? (
                 <div className="relative" ref={profileRef}>
                   <button
                     type="button"
-                    aria-label="Account menu"
+                    aria-label="Open account menu"
                     aria-expanded={profileOpen}
-                    onClick={() => setProfileOpen((v) => !v)}
-                    className="w-10 h-10 rounded-full ring-2 ring-primary/30 overflow-hidden hover:ring-primary/60 transition active:scale-95"
+                    aria-haspopup="true"
+                    onClick={() =>
+                      setProfileOpen((previous) => !previous)
+                    }
+                    className={[
+                      "flex h-10 w-10 items-center justify-center",
+                      "overflow-hidden rounded-full",
+                      "border-2 border-primary/30 bg-base-200",
+                      "transition-[border-color,transform]",
+                      "hover:border-primary active:scale-95",
+                      "focus-visible:outline-none focus-visible:ring-2",
+                      "focus-visible:ring-primary",
+                    ].join(" ")}
                   >
-                    <img
-                      src={avatarError ? FALLBACK_AVATAR : user.photoURL || FALLBACK_AVATAR}
-                      onError={() => setAvatarError(true)}
-                      alt={user.displayName ? `${user.displayName}'s avatar` : "User avatar"}
-                      className="w-full h-full object-cover"
-                    />
+                    {avatarUrl && !avatarError ? (
+                      <img
+                        src={avatarUrl}
+                        alt=""
+                        referrerPolicy="no-referrer"
+                        onError={() => setAvatarError(true)}
+                        className="h-full w-full object-cover"
+                      />
+                    ) : (
+                      <HiOutlineUser
+                        size={23}
+                        aria-hidden="true"
+                        className="text-base-content/70"
+                      />
+                    )}
                   </button>
 
                   <AnimatePresence>
                     {profileOpen && (
-                      <motion.ul
-                        initial={{ opacity: 0, y: -8, scale: 0.96 }}
+                      <motion.div
+                        initial={
+                          prefersReducedMotion
+                            ? false
+                            : { opacity: 0, y: -6, scale: 0.98 }
+                        }
                         animate={{ opacity: 1, y: 0, scale: 1 }}
-                        exit={{ opacity: 0, y: -8, scale: 0.96 }}
-                        transition={{ duration: 0.15, ease: "easeOut" }}
-                        className="absolute right-0 mt-3 w-64 p-2 bg-base-100 rounded-2xl border border-base-300 shadow-xl origin-top-right"
+                        exit={{ opacity: 0, y: -6, scale: 0.98 }}
+                        transition={
+                          prefersReducedMotion
+                            ? { duration: 0 }
+                            : { duration: 0.16, ease: "easeOut" }
+                        }
+                        className={[
+                          "absolute right-0 mt-3 w-64 max-w-[calc(100vw-2rem)]",
+                          "origin-top-right rounded-2xl",
+                          "border border-base-300 bg-base-100 p-2",
+                          "shadow-xl",
+                        ].join(" ")}
                       >
-                        <li className="px-3 py-2">
-                          <p className="font-semibold truncate">{user.displayName || "User"}</p>
-                          <p className="text-xs opacity-60 truncate">{user.email}</p>
-                        </li>
-                        <div className="h-px bg-base-300 my-1 mx-1" />
-                        <li>
-                          <Link
-                            to="/dashboard/profile"
-                            className="flex items-center gap-2 px-3 py-2 rounded-xl text-sm hover:bg-base-200 transition"
-                          >
-                            <HiOutlineUser size={18} />
-                            Profile
-                          </Link>
-                        </li>
-                        <li>
-                          <button
-                            onClick={handleLogout}
-                            className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-sm text-error hover:bg-error/10 transition"
-                          >
-                            <HiOutlineLogout size={18} />
-                            Logout
-                          </button>
-                        </li>
-                      </motion.ul>
+                        <div className="px-3 py-3">
+                          <p className="truncate text-sm font-semibold">
+                            {user.displayName || "User"}
+                          </p>
+
+                          <p className="mt-1 truncate text-xs text-base-content/60">
+                            {user.email || "No email available"}
+                          </p>
+                        </div>
+
+                        <div className="my-1 h-px bg-base-300" />
+
+                        <Link
+                          to="/dashboard/profile"
+                          onClick={closeProfile}
+                          className={[
+                            "flex items-center gap-3 rounded-xl px-3 py-2.5",
+                            "text-sm transition-colors hover:bg-base-200",
+                            "focus-visible:outline-none focus-visible:ring-2",
+                            "focus-visible:ring-primary",
+                          ].join(" ")}
+                        >
+                          <HiOutlineUser
+                            size={18}
+                            aria-hidden="true"
+                          />
+                          Profile
+                        </Link>
+
+                        <button
+                          type="button"
+                          onClick={handleLogout}
+                          disabled={loggingOut}
+                          className={[
+                            "flex w-full items-center gap-3 rounded-xl",
+                            "px-3 py-2.5 text-left text-sm",
+                            "text-error transition-colors hover:bg-error/10",
+                            "disabled:cursor-not-allowed disabled:opacity-60",
+                            "focus-visible:outline-none focus-visible:ring-2",
+                            "focus-visible:ring-error",
+                          ].join(" ")}
+                        >
+                          <HiOutlineLogout
+                            size={18}
+                            aria-hidden="true"
+                          />
+
+                          {loggingOut ? "Logging out..." : "Logout"}
+                        </button>
+                      </motion.div>
                     )}
                   </AnimatePresence>
                 </div>
               ) : (
-                <NavLink
+                <Link
                   to="/login"
-                  className="btn btn-primary btn-sm sm:btn-md rounded-full px-5 hover:scale-[1.03] active:scale-95 transition-transform"
+                  className={[
+                    "btn btn-primary btn-sm sm:btn-md",
+                    "min-h-10 rounded-full px-4 sm:px-5",
+                    "transition-transform hover:scale-[1.02]",
+                    "active:scale-95",
+                    "focus-visible:outline-none focus-visible:ring-2",
+                    "focus-visible:ring-primary focus-visible:ring-offset-2",
+                  ].join(" ")}
                 >
                   Login
-                </NavLink>
+                </Link>
               )}
             </div>
           </div>
         </div>
 
-        {/* MOBILE DRAWER */}
-        <AnimatePresence>
+        {/* Mobile navigation */}
+        <AnimatePresence initial={false}>
           {mobileOpen && (
             <motion.div
               ref={mobileRef}
-              initial={{ opacity: 0, height: 0 }}
+              id="mobile-navigation"
+              initial={
+                prefersReducedMotion
+                  ? false
+                  : { opacity: 0, height: 0 }
+              }
               animate={{ opacity: 1, height: "auto" }}
-              exit={{ opacity: 0, height: 0 }}
-              transition={{ duration: 0.25, ease: "easeInOut" }}
-              className="lg:hidden overflow-hidden border-t border-base-300 bg-base-100/95 backdrop-blur-xl"
+              exit={
+                prefersReducedMotion
+                  ? { opacity: 0 }
+                  : { opacity: 0, height: 0 }
+              }
+              transition={
+                prefersReducedMotion
+                  ? { duration: 0 }
+                  : { duration: 0.2, ease: "easeInOut" }
+              }
+              className={[
+                "overflow-hidden border-t border-base-300",
+                "bg-base-100/95 backdrop-blur-xl lg:hidden",
+              ].join(" ")}
             >
-              <ul className="max-w-7xl mx-auto px-4 py-3 flex flex-col gap-1">
-                {menuItems.map((item, i) => {
-                  const active = isActiveRoute(item.path);
-                  return (
-                    <motion.li
-                      key={item.path}
-                      initial={{ opacity: 0, x: -12 }}
-                      animate={{ opacity: 1, x: 0 }}
-                      transition={{ delay: prefersReducedMotion ? 0 : i * 0.04, duration: 0.2 }}
+              <ul className="mx-auto flex max-w-7xl flex-col gap-1 px-4 py-3 sm:px-6">
+                {menuItems.map((item, index) => (
+                  <motion.li
+                    key={item.path}
+                    initial={
+                      prefersReducedMotion
+                        ? false
+                        : { opacity: 0, x: -8 }
+                    }
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{
+                      duration: prefersReducedMotion ? 0 : 0.16,
+                      delay: prefersReducedMotion ? 0 : index * 0.025,
+                    }}
+                  >
+                    <NavLink
+                      to={item.path}
+                      end={item.path === "/"}
+                      className={getMobileLinkClass}
                     >
-                      <NavLink
-                        to={item.path}
-                        end={item.path === "/"}
-                        aria-current={active ? "page" : undefined}
-                        className={`block px-4 py-3 rounded-xl text-[15px] font-medium transition-colors ${
-                          active ? "bg-primary text-primary-content" : "hover:bg-base-200"
-                        }`}
-                      >
-                        {item.name}
-                      </NavLink>
-                    </motion.li>
-                  );
-                })}
+                      {item.name}
+                    </NavLink>
+                  </motion.li>
+                ))}
+
+                {!user && (
+                  <li className="pt-2">
+                    <Link
+                      to="/login"
+                      className="btn btn-primary min-h-11 w-full rounded-xl"
+                    >
+                      Login to your account
+                    </Link>
+                  </li>
+                )}
               </ul>
             </motion.div>
           )}
         </AnimatePresence>
       </motion.nav>
 
-      {/* Spacer to offset fixed navbar */}
-      <div className={scrolled ? "h-14" : "h-16"} />
+      {/* Offset the fixed navbar */}
+      <div
+        aria-hidden="true"
+        className={scrolled ? "h-14" : "h-16"}
+      />
     </>
   );
 };

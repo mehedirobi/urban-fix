@@ -1,136 +1,156 @@
 import React from "react";
+import { Link } from "react-router-dom";
 import {
+  FaTools,
   FaFacebookF,
   FaTwitter,
   FaInstagram,
 } from "react-icons/fa";
+import { HiOutlineArrowUpRight } from "react-icons/hi2";
 
-const FOOTER_LINKS = {
-  company: [
-    { label: "About Us", href: "/about-us" },
-    { label: "Careers", href: "/careers" },
-    { label: "Blog", href: "/blog" },
-  ],
-  legal: [
-    { label: "Privacy Policy", href: "/privacy-policy" },
-    { label: "Terms of Service", href: "/terms" },
-    { label: "Cookies", href: "/cookies" },
-  ],
-};
+const FOOTER_LINKS = [
+  {
+    title: "Company",
+    links: [
+      { label: "About Us", href: "/about-us" },
+      { label: "Careers", href: "/careers" },
+      { label: "Blog", href: "/blog" },
+    ],
+  },
+  {
+    title: "Resources",
+    links: [
+      { label: "All Issues", href: "/all-issues" },
+      { label: "Report an Issue", href: "/create-issue" },
+      { label: "Support", href: "/support" },
+    ],
+  },
+  {
+    title: "Legal",
+    links: [
+      { label: "Privacy Policy", href: "/privacy-policy" },
+      { label: "Terms of Service", href: "/terms" },
+      { label: "Cookies", href: "/cookies" },
+    ],
+  },
+];
 
 const SOCIAL_LINKS = [
   {
-    icon: <FaFacebookF />,
     label: "Facebook",
     href: "https://facebook.com",
-    hover: "hover:text-blue-500",
+    icon: FaFacebookF,
   },
   {
-    icon: <FaTwitter />,
     label: "Twitter",
     href: "https://twitter.com",
-    hover: "hover:text-blue-400",
+    icon: FaTwitter,
   },
   {
-    icon: <FaInstagram />,
     label: "Instagram",
     href: "https://instagram.com",
-    hover: "hover:text-pink-500",
+    icon: FaInstagram,
   },
 ];
 
 const Footer = () => {
+  const currentYear = new Date().getFullYear();
+
   return (
-    <footer className="bg-gray-900 text-gray-200 py-12 mt-10">
+    <footer className="mt-16 border-t border-base-300 bg-base-200/60 text-base-content">
+      <div className="mx-auto max-w-7xl px-4 py-12 sm:px-6 sm:py-14 lg:px-8">
+        {/* Main footer */}
+        <div className="grid grid-cols-1 gap-10 sm:grid-cols-2 lg:grid-cols-[1.5fr_2fr] lg:gap-16">
+          {/* Brand */}
+          <div className="max-w-sm">
+            <Link
+              to="/"
+              aria-label="UrbanFix home"
+              className="group inline-flex items-center gap-2 rounded-lg text-2xl font-extrabold tracking-tight focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+            >
+              <FaTools
+                aria-hidden="true"
+                className="text-3xl text-primary transition-transform duration-300 group-hover:rotate-12"
+              />
 
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+              <span>
+                Urban<span className="text-primary">Fix</span>
+              </span>
+            </Link>
 
-        {/* Top Section */}
-        <div className="flex flex-col md:flex-row justify-between gap-10">
-
-          {/* Branding */}
-          <section className="text-center md:text-left max-w-sm">
-            <h2 className="text-3xl font-extrabold text-blue-600 mb-2">
-              UrbanFix
-            </h2>
-            <p className="text-sm text-gray-400 leading-relaxed">
-              Report, track, and resolve city issues efficiently.
-              Helping build smarter and cleaner communities.
+            <p className="mt-4 text-sm leading-7 text-base-content/65">
+              Report, track, and resolve public infrastructure
+              issues. Together, we can build cleaner, safer, and
+              better-connected communities.
             </p>
-          </section>
 
-          {/* Links */}
-          <section className="grid grid-cols-2 sm:grid-cols-3 gap-8 w-full md:w-auto">
-
-            {/* Company */}
-            <div>
-              <h3 className="font-semibold mb-3">Company</h3>
-              <ul className="space-y-2 text-sm text-gray-400">
-                {FOOTER_LINKS.company.map((item) => (
-                  <li key={item.href}>
-                    <a
-                      href={item.href}
-                      className="hover:text-blue-500 transition-colors"
-                    >
-                      {item.label}
-                    </a>
-                  </li>
-                ))}
-              </ul>
+            <div className="mt-6 flex items-center gap-3">
+              {SOCIAL_LINKS.map(({ label, href, icon: Icon }) => (
+                <a
+                  key={label}
+                  href={href}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  aria-label={`Visit UrbanFix on ${label}`}
+                  className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-base-300 bg-base-100 text-base-content/70 transition-all duration-200 hover:border-primary hover:bg-primary hover:text-primary-content focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
+                >
+                  <Icon size={16} aria-hidden="true" />
+                </a>
+              ))}
             </div>
+          </div>
 
-            {/* Social */}
-            <div>
-              <h3 className="font-semibold mb-3">Follow Us</h3>
-              <ul className="space-y-2 text-sm text-gray-400">
-                {SOCIAL_LINKS.map((item) => (
-                  <li key={item.label}>
-                    <a
-                      href={item.href}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className={`flex items-center gap-2 justify-center md:justify-start transition-colors ${item.hover}`}
-                    >
-                      {item.icon} {item.label}
-                    </a>
-                  </li>
-                ))}
-              </ul>
-            </div>
+          {/* Footer navigation */}
+          <div className="grid grid-cols-2 gap-x-6 gap-y-8 sm:grid-cols-3">
+            {FOOTER_LINKS.map((section) => (
+              <nav key={section.title} aria-label={section.title}>
+                <h3 className="mb-4 text-sm font-bold tracking-wide">
+                  {section.title}
+                </h3>
 
-            {/* Legal */}
-            <div>
-              <h3 className="font-semibold mb-3">Legal</h3>
-              <ul className="space-y-2 text-sm text-gray-400">
-                {FOOTER_LINKS.legal.map((item) => (
-                  <li key={item.href}>
-                    <a
-                      href={item.href}
-                      className="hover:text-blue-500 transition-colors"
-                    >
-                      {item.label}
-                    </a>
-                  </li>
-                ))}
-              </ul>
-            </div>
+                <ul className="space-y-3">
+                  {section.links.map((item) => (
+                    <li key={item.href}>
+                      <Link
+                        to={item.href}
+                        className="group inline-flex items-center gap-1 text-sm text-base-content/65 transition-colors duration-200 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
+                      >
+                        {item.label}
 
-          </section>
+                        <HiOutlineArrowUpRight
+                          aria-hidden="true"
+                          className="shrink-0 opacity-0 transition-opacity duration-200 group-hover:opacity-100"
+                          size={14}
+                        />
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              </nav>
+            ))}
+          </div>
         </div>
 
-        {/* Divider */}
-        <div className="border-t border-gray-700 my-6" />
+        {/* Bottom section */}
+        <div className="mt-10 flex flex-col items-center justify-between gap-4 border-t border-base-300 pt-6 text-center sm:mt-12 sm:flex-row sm:text-left">
+          <p className="text-xs leading-5 text-base-content/60 sm:text-sm">
+            © {currentYear} UrbanFix. All rights reserved.
+          </p>
 
-        {/* Bottom */}
-        <div className="text-center text-sm text-gray-400 space-y-1">
-          <p>
-            © {new Date().getFullYear()} UrbanFix. All rights reserved.
+          <p className="text-xs text-base-content/60 sm:text-sm">
+            Designed and built by{" "}
+            <span className="font-semibold text-base-content">
+              Mehedi
+            </span>
           </p>
-          <p>
-            Designed and built by <span className="font-semibold">Mehedi</span>
-          </p>
+
+          <Link
+            to="/"
+            className="text-xs font-medium text-base-content/65 transition-colors hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary sm:text-sm"
+          >
+            Back to home ↑
+          </Link>
         </div>
-
       </div>
     </footer>
   );
