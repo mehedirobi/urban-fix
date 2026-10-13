@@ -1,316 +1,650 @@
-import React, { useEffect, useState, useCallback } from "react";
-import { useParams, useNavigate, Link } from "react-router-dom";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import { motion, useReducedMotion } from "framer-motion";
 import axios from "axios";
-import { api, readRecord } from "../lib/api";
-import UseAuth from "../hooks/UseAuth";
-import useAxiosSecure from "../hooks/useAxiosSecure";
-import { AiFillLike } from "react-icons/ai";
-import { HiOutlineArrowLeft, HiOutlineLink, HiOutlineRefresh } from "react-icons/hi";
 import Swal from "sweetalert2";
+import {
+  AiFillLike,
+} from "react-icons/ai";
+import {
+  HiOutlineArrowLeft,
+  HiOutlineLink,
+  HiOutlineRefresh,
+} from "react-icons/hi";
+
+import { api, readRecord } from "../lib/api";
+import useAuth from "../hooks/UseAuth";
+import useAxiosSecure from "../hooks/useAxiosSecure";
 
 const NO_IMAGE_FALLBACK =
   "data:image/svg+xml;charset=UTF-8," +
-  encodeURIComponent(
-    `<svg xmlns="http://www.w3.org/2000/svg" width="600" height="400" viewBox="0 0 600 400">
-      <rect width="600" height="400" fill="#e5e7eb"/>
-      <text x="50%" y="50%" font-family="sans-serif" font-size="18" fill="#9ca3af" text-anchor="middle" dy=".3em">No image available</text>
-    </svg>`
-  );
+  encodeURIComponent(`
+    <svg xmlns="http://www.w3.org/2000/svg" width="1200" height="800" viewBox="0 0 1200 800">
+      <rect width="1200" height="800" fill="#e5e7eb"/>
+      <text x="600" y="400" font-family="sans-serif" font-size="32" fill="#6b7280" text-anchor="middle" dominant-baseline="middle">
+        No image available
+      </text>
+    </svg>
+  `);
 
 const displayText = (value) => {
-  if (!value) return "Unknown";
+  if (value == null || value === "") return "Unknown";
+
   if (typeof value === "string") return value;
-  if (typeof value === "object") return value.name || value.email || "Unknown";
+
+  if (typeof value === "object") {
+    return value.name || value.email || "Unknown";
+  }
+
   return String(value);
 };
 
+const normalizeEmail = (value) =>
+  typeof value === "string" ? value.trim().toLowerCase() : "";
+
+const formatDate = (value) => {
+  if (!value) return "Date unavailable";
+
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) return "Date unavailable";
+
+  return date.toLocaleString(undefined, {
+    dateStyle: "medium",
+    timeStyle: "short",
+  });
+};
+
 const statusBadgeClass = (status) => {
-  switch (status?.toLowerCase()) {
+  switch (String(status || "").trim().toLowerCase()) {
     case "resolved":
       return "badge-success";
+
     case "in-progress":
     case "in progress":
       return "badge-warning";
+
     case "closed":
     case "rejected":
       return "badge-error";
+
+    case "pending":
+      return "badge-info";
+
     default:
       return "badge-primary";
   }
 };
 
 const priorityBadgeClass = (priority) => {
-  switch (priority?.toLowerCase()) {
+  switch (String(priority || "").trim().toLowerCase()) {
     case "high":
       return "badge-error";
+
     case "medium":
       return "badge-warning";
-    default:
+
+    case "low":
       return "badge-success";
+
+    default:
+      return "badge-ghost";
   }
 };
 
+const getOwnerEmail = (postedBy) => {
+  if (typeof postedBy === "string") {
+    return normalizeEmail(postedBy);
+  }
+
+  return normalizeEmail(postedBy?.email);
+};
+
 const DetailsSkeleton = () => (
-  <div className="max-w-4xl mx-auto px-4 py-10 space-y-10 animate-pulse">
-    <div className="h-[300px] md:h-[400px] bg-base-300 rounded-xl" />
-    <div className="bg-base-100 border border-base-300 p-6 rounded-xl space-y-4">
-      <div className="h-8 bg-base-300 rounded w-2/3" />
-      <div className="flex gap-2">
-        <div className="h-6 w-20 bg-base-300 rounded-full" />
-        <div className="h-6 w-20 bg-base-300 rounded-full" />
-        <div className="h-6 w-20 bg-base-300 rounded-full" />
+  <main
+    className="mx-auto max-w-5xl space-y-6 px-4 py-8 sm:py-12"
+    aria-label="Loading issue details"
+    aria-busy="true"
+  >
+    <div className="h-8 w-36 animate-pulse rounded bg-base-300" />
+
+    <div className="aspect-[16/9] w-full animate-pulse rounded-2xl bg-base-300 sm:aspect-[16/8]" />
+
+    <section className="space-y-5 rounded-2xl border border-base-300 bg-base-100 p-5 sm:p-8">
+      <div className="h-8 w-3/4 animate-pulse rounded bg-base-300" />
+
+      <div className="flex flex-wrap gap-2">
+        {[1, 2, 3].map((item) => (
+          <div
+            key={item}
+            className="h-6 w-20 animate-pulse rounded-full bg-base-300"
+          />
+        ))}
       </div>
-      <div className="h-4 bg-base-300 rounded w-1/3" />
-      <div className="h-20 bg-base-300 rounded" />
-    </div>
-  </div>
+
+      <div className="h-4 w-1/2 animate-pulse rounded bg-base-300" />
+      <div className="h-20 animate-pulse rounded bg-base-300" />
+    </section>
+  </main>
 );
 
 const IssueDetails = () => {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { user } = UseAuth();
+  const { user } = useAuth();
   const secureApi = useAxiosSecure();
   const prefersReducedMotion = useReducedMotion();
 
   const [issue, setIssue] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
+  const [error, setError] = useState("");
   const [retryCount, setRetryCount] = useState(0);
+  const [upvoting, setUpvoting] = useState(false);
+
+  const currentEmail = normalizeEmail(user?.email);
+
+  const motionInitial = prefersReducedMotion
+    ? false
+    : { opacity: 0, y: 12 };
+
+  const motionTransition = prefersReducedMotion
+    ? { duration: 0 }
+    : { duration: 0.3 };
 
   const loadIssue = useCallback(
     async (signal) => {
+      setLoading(true);
+      setError("");
+
       try {
-        setLoading(true);
-        setError(null);
+        const response = await api.get(`/issues/${id}`, { signal });
+        const found = readRecord(response.data, "issue");
 
-        const res = await api.get(`/issues/${id}`, { signal });
-        const found = readRecord(res.data, "issue");
-
-        if (!found) {
-          navigate("/all-issues");
+        if (!found || typeof found !== "object" || !found._id) {
+          setIssue(null);
+          setError("This issue could not be found.");
           return;
         }
 
         const normalizedIssue = {
           ...found,
+          title: found.title || "Untitled issue",
+          category: found.category || "Uncategorized",
+          status: found.status || "Pending",
+          priority: found.priority || "Normal",
+          location: found.location || "Location unavailable",
+          description: found.description || "",
           image: found.image || NO_IMAGE_FALLBACK,
-          upvotedUsers: Array.isArray(found.upvotedUsers) ? found.upvotedUsers : [],
+          upvotes: Math.max(0, Number(found.upvotes) || 0),
+          upvotedUsers: Array.isArray(found.upvotedUsers)
+            ? found.upvotedUsers
+                .filter((email) => typeof email === "string")
+                .map(normalizeEmail)
+            : [],
           timeline:
             Array.isArray(found.timeline) && found.timeline.length > 0
               ? found.timeline
               : [
                   {
-                    status: "Pending",
-                    message: "Issue reported by citizen",
+                    status: found.status || "Pending",
+                    message: "Issue reported",
                     updatedBy: displayText(found.postedBy),
-                    date: found.createdAt ? new Date(found.createdAt) : new Date(),
+                    date: found.createdAt || null,
                   },
                 ],
         };
 
         setIssue(normalizedIssue);
       } catch (err) {
-        if (axios.isCancel(err)) return;
-        console.error(err);
-        setError("Failed to load issue details.");
+        if (signal.aborted || axios.isCancel(err)) return;
+
+        console.error("Failed to load issue details:", err);
+
+        setIssue(null);
+        setError(
+          err.response?.status === 404
+            ? "This issue could not be found."
+            : "Unable to load issue details. Please check your connection and try again."
+        );
       } finally {
-        setLoading(false);
+        if (!signal.aborted) {
+          setLoading(false);
+        }
       }
     },
-    [id, navigate]
+    [id]
   );
 
   useEffect(() => {
-    if (!id) return;
+    if (!id) {
+      setIssue(null);
+      setError("No issue ID was provided.");
+      setLoading(false);
+      return undefined;
+    }
+
     const controller = new AbortController();
+
     loadIssue(controller.signal);
+
     return () => controller.abort();
-  }, [id, loadIssue, retryCount]);
+  }, [id, retryCount, loadIssue]);
+
+  const sortedTimeline = useMemo(() => {
+    if (!Array.isArray(issue?.timeline)) return [];
+
+    return [...issue.timeline].sort((a, b) => {
+      const dateA = new Date(a?.date || 0).getTime();
+      const dateB = new Date(b?.date || 0).getTime();
+
+      const safeDateA = Number.isNaN(dateA) ? 0 : dateA;
+      const safeDateB = Number.isNaN(dateB) ? 0 : dateB;
+
+      return safeDateB - safeDateA;
+    });
+  }, [issue?.timeline]);
+
+  const isOwnIssue =
+    Boolean(currentEmail) && getOwnerEmail(issue?.postedBy) === currentEmail;
+
+  const alreadyUpvoted =
+    Boolean(currentEmail) &&
+    Boolean(issue?.upvotedUsers?.includes(currentEmail));
 
   const handleUpvote = async () => {
-    if (!user?.email) return navigate("/login");
-    if (!issue?._id || issue.postedBy?.email === user.email) return;
-    if (issue.upvotedUsers.includes(user.email)) return;
+    if (!user?.email) {
+      const result = await Swal.fire({
+        icon: "info",
+        title: "Login required",
+        text: "Please log in before upvoting an issue.",
+        showCancelButton: true,
+        confirmButtonText: "Go to login",
+        cancelButtonText: "Cancel",
+        confirmButtonColor: "#087f5b",
+      });
 
-    const previous = issue;
-    setIssue((prev) => ({
-      ...prev,
-      upvotes: (prev.upvotes || 0) + 1,
-      upvotedUsers: [...prev.upvotedUsers, user.email],
+      if (result.isConfirmed) {
+        navigate("/login");
+      }
+
+      return;
+    }
+
+    if (!issue?._id || isOwnIssue || alreadyUpvoted || upvoting) return;
+
+    const previousIssue = issue;
+
+    setUpvoting(true);
+
+    // Optimistic UI update.
+    setIssue((current) => ({
+      ...current,
+      upvotes: current.upvotes + 1,
+      upvotedUsers: [...current.upvotedUsers, currentEmail],
     }));
 
     try {
-      const res = await secureApi.put(`/issues/${issue._id}/upvote`, {
+      const response = await secureApi.put(`/issues/${issue._id}/upvote`, {
         userEmail: user.email,
       });
-      if (res?.data?._id) setIssue((prev) => ({ ...prev, ...res.data }));
+
+      const updatedIssue = readRecord(response.data, "issue");
+
+      if (updatedIssue && typeof updatedIssue === "object") {
+        setIssue((current) => {
+          if (!current) return current;
+
+          return {
+            ...current,
+            ...updatedIssue,
+            upvotes:
+              Number(updatedIssue.upvotes) >= 0
+                ? Number(updatedIssue.upvotes)
+                : current.upvotes,
+            upvotedUsers: Array.isArray(updatedIssue.upvotedUsers)
+              ? updatedIssue.upvotedUsers.map(normalizeEmail)
+              : current.upvotedUsers,
+          };
+        });
+      }
     } catch (err) {
-      console.error("Upvote failed:", err);
-      setIssue(previous);
+      console.error("Failed to upvote issue:", err);
+
+      setIssue(previousIssue);
+
+      await Swal.fire({
+        icon: "error",
+        title: "Upvote failed",
+        text:
+          err.response?.data?.message ||
+          "Your upvote could not be saved. Please try again.",
+        confirmButtonColor: "#087f5b",
+      });
+    } finally {
+      setUpvoting(false);
     }
   };
 
   const handleCopyLink = async () => {
     try {
+      if (!navigator.clipboard?.writeText) {
+        throw new Error("Clipboard access is unavailable.");
+      }
+
       await navigator.clipboard.writeText(window.location.href);
-      Swal.fire({
+
+      await Swal.fire({
         icon: "success",
         title: "Link copied",
-        timer: 1200,
+        text: "The issue link is ready to share.",
+        timer: 1500,
         showConfirmButton: false,
       });
     } catch {
-      Swal.fire({ icon: "error", title: "Couldn't copy link" });
+      await Swal.fire({
+        icon: "error",
+        title: "Couldn't copy link",
+        text: "Your browser may not allow clipboard access on this page.",
+        confirmButtonColor: "#087f5b",
+      });
     }
   };
 
-  if (loading) return <DetailsSkeleton />;
+  if (loading) {
+    return <DetailsSkeleton />;
+  }
 
-  if (error) {
+  if (error || !issue) {
     return (
-      <div className="max-w-4xl mx-auto px-4 py-20 flex flex-col items-center text-center gap-4">
-        <p className="text-error font-semibold">{error}</p>
-        <button onClick={() => setRetryCount((c) => c + 1)} className="btn btn-outline btn-sm gap-2">
-          <HiOutlineRefresh size={18} />
-          Try again
-        </button>
-      </div>
+      <main className="mx-auto flex min-h-[60vh] max-w-3xl flex-col items-center justify-center gap-4 px-4 py-16 text-center">
+        <div className="flex h-16 w-16 items-center justify-center rounded-full bg-base-200 text-base-content/60">
+          <HiOutlineRefresh size={28} />
+        </div>
+
+        <h1 className="text-2xl font-bold text-base-content">
+          Unable to display issue
+        </h1>
+
+        <p className="max-w-md text-sm leading-6 text-base-content/65">
+          {error || "The requested issue is unavailable."}
+        </p>
+
+        <div className="mt-2 flex flex-wrap justify-center gap-3">
+          {id && (
+            <button
+              type="button"
+              onClick={() => setRetryCount((count) => count + 1)}
+              className="btn btn-primary btn-sm gap-2"
+            >
+              <HiOutlineRefresh size={17} />
+              Try again
+            </button>
+          )}
+
+          <Link to="/all-issues" className="btn btn-outline btn-sm gap-2">
+            <HiOutlineArrowLeft size={17} />
+            Back to issues
+          </Link>
+        </div>
+      </main>
     );
   }
 
-  if (!issue) return null;
-
-  const sortedTimeline = [...issue.timeline].sort((a, b) => new Date(b.date) - new Date(a.date));
-  const alreadyUpvoted = issue.upvotedUsers.includes(user?.email);
-  const isOwnIssue = issue.postedBy?.email === user?.email;
-
   return (
-    <div className="max-w-4xl mx-auto px-4 py-10 space-y-8">
-      {/* Back + actions */}
-      <div className="flex items-center justify-between">
+    <main className="mx-auto max-w-5xl space-y-6 px-4 py-6 sm:py-10">
+      {/* Navigation and actions */}
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <button
+          type="button"
           onClick={() => navigate("/all-issues")}
           className="btn btn-ghost btn-sm gap-2"
         >
           <HiOutlineArrowLeft size={18} />
-          Back to Issues
+          Back to issues
         </button>
 
-        <button onClick={handleCopyLink} className="btn btn-outline btn-sm gap-2">
-          <HiOutlineLink size={16} />
-          Copy Link
+        <button
+          type="button"
+          onClick={handleCopyLink}
+          className="btn btn-outline btn-sm gap-2"
+        >
+          <HiOutlineLink size={17} />
+          Share issue
         </button>
       </div>
 
-      {/* Image */}
-      <motion.div
-        initial={{ opacity: 0, y: 16 }}
+      {/* Issue image */}
+      <motion.figure
+        initial={motionInitial}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.4 }}
-        className="rounded-xl overflow-hidden shadow-lg bg-base-200"
+        transition={motionTransition}
+        className="overflow-hidden rounded-2xl border border-base-300 bg-base-200 shadow-sm"
       >
         <img
           src={issue.image}
-          alt={issue.title || "Issue image"}
-          className="w-full h-[300px] md:h-[400px] object-cover"
-          loading="lazy"
-          onError={(e) => {
-            e.currentTarget.onerror = null;
-            e.currentTarget.src = NO_IMAGE_FALLBACK;
+          alt={issue.title ? `Photo for ${issue.title}` : "Issue photo"}
+          className="aspect-[16/9] max-h-[520px] w-full object-cover"
+          loading="eager"
+          decoding="async"
+          onError={(event) => {
+            if (event.currentTarget.src !== NO_IMAGE_FALLBACK) {
+              event.currentTarget.src = NO_IMAGE_FALLBACK;
+            }
           }}
         />
-      </motion.div>
+      </motion.figure>
 
-      {/* Overview */}
-      <motion.div
-        initial={{ opacity: 0, y: 16 }}
+      {/* Issue overview */}
+      <motion.section
+        initial={motionInitial}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.4, delay: 0.1 }}
-        className="bg-base-100 border border-base-300 p-6 rounded-xl shadow-sm space-y-4"
+        transition={
+          prefersReducedMotion
+            ? { duration: 0 }
+            : { duration: 0.3, delay: 0.05 }
+        }
+        aria-labelledby="issue-title"
+        className="space-y-6 rounded-2xl border border-base-300 bg-base-100 p-5 shadow-sm sm:p-8"
       >
-        <h1 className="text-2xl md:text-4xl font-bold text-primary">{issue.title}</h1>
+        <div className="space-y-4">
+          <div className="flex flex-wrap gap-2">
+            <span className="badge badge-primary badge-outline">
+              {issue.category}
+            </span>
 
-        <div className="flex gap-2 flex-wrap">
-          <span className="badge badge-primary badge-outline">{issue.category}</span>
-          <span className={`badge ${statusBadgeClass(issue.status)}`}>{issue.status}</span>
-          <span className={`badge ${priorityBadgeClass(issue.priority)}`}>
-            {issue.priority || "Normal"}
-          </span>
-        </div>
+            <span className={`badge ${statusBadgeClass(issue.status)}`}>
+              {issue.status}
+            </span>
 
-        <p className="text-base-content/70">
-          Location: <span className="font-semibold text-base-content">{issue.location}</span>
-        </p>
+            <span className={`badge ${priorityBadgeClass(issue.priority)}`}>
+              {issue.priority} priority
+            </span>
+          </div>
 
-        <p className="text-base-content/80 leading-relaxed">
-          {issue.description || "No description available."}
-        </p>
-
-        <p className="text-sm text-base-content/60">
-          Posted by: <span className="font-semibold">{displayText(issue.postedBy)}</span>
-        </p>
-
-        <div className="flex items-center justify-between pt-2">
-          <span className="text-lg font-semibold">{issue.upvotes || 0} Upvotes</span>
-          <button
-            onClick={handleUpvote}
-            disabled={isOwnIssue}
-            title={isOwnIssue ? "You can't upvote your own issue" : undefined}
-            className={`btn btn-sm gap-2 transition-all duration-300 ${
-              alreadyUpvoted ? "btn-success text-white" : "btn-outline"
-            }`}
+          <h1
+            id="issue-title"
+            className="break-words text-2xl font-bold leading-tight text-base-content sm:text-3xl lg:text-4xl"
           >
-            <AiFillLike className={alreadyUpvoted ? "text-white" : "text-yellow-400"} size={18} />
-            {alreadyUpvoted ? "Upvoted" : "Upvote"}
-          </button>
+            {issue.title}
+          </h1>
+
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-base-content/65">
+            <span aria-hidden="true">Location:</span>
+            <span className="font-medium text-base-content">
+              {issue.location}
+            </span>
+          </div>
         </div>
-      </motion.div>
 
-      {/* Timeline */}
-      {sortedTimeline.length > 0 && (
-        <motion.div
-          initial={{ opacity: 0, y: 16 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.4, delay: 0.2 }}
-          className="bg-base-200 p-6 rounded-xl shadow-sm"
-        >
-          <h2 className="text-xl md:text-2xl font-bold text-primary mb-6">Issue Timeline</h2>
+        <div className="border-t border-base-300" />
 
-          <div className="relative flex flex-col gap-6">
+        <div className="space-y-2">
+          <h2 className="text-base font-semibold text-base-content">
+            Issue description
+          </h2>
+
+          <p className="whitespace-pre-line break-words text-sm leading-7 text-base-content/75 sm:text-base">
+            {issue.description || "No description has been provided."}
+          </p>
+        </div>
+
+        <div className="flex flex-wrap items-center justify-between gap-4 border-t border-base-300 pt-5">
+          <div className="space-y-1 text-sm">
+            <p className="text-base-content/55">Reported by</p>
+            <p className="break-all font-semibold text-base-content">
+              {displayText(issue.postedBy)}
+            </p>
+
+            {issue.createdAt && (
+              <p className="text-xs text-base-content/55">
+                {formatDate(issue.createdAt)}
+              </p>
+            )}
+          </div>
+
+          <div className="flex items-center gap-4">
+            <div className="text-right">
+              <p className="text-2xl font-bold tabular-nums text-base-content">
+                {issue.upvotes}
+              </p>
+              <p className="text-xs text-base-content/55">
+                {issue.upvotes === 1 ? "Upvote" : "Upvotes"}
+              </p>
+            </div>
+
+            <button
+              type="button"
+              onClick={handleUpvote}
+              disabled={
+                isOwnIssue ||
+                alreadyUpvoted ||
+                upvoting ||
+                !issue._id
+              }
+              title={
+                isOwnIssue
+                  ? "You cannot upvote your own issue"
+                  : alreadyUpvoted
+                    ? "You have already upvoted this issue"
+                    : "Upvote this issue"
+              }
+              aria-pressed={alreadyUpvoted}
+              className={`btn btn-sm gap-2 ${
+                alreadyUpvoted ? "btn-success text-white" : "btn-outline"
+              }`}
+            >
+              <AiFillLike
+                size={18}
+                className={alreadyUpvoted ? "text-white" : ""}
+              />
+
+              {upvoting
+                ? "Saving..."
+                : alreadyUpvoted
+                  ? "Upvoted"
+                  : isOwnIssue
+                    ? "Your issue"
+                    : "Upvote"}
+            </button>
+          </div>
+        </div>
+      </motion.section>
+
+      {/* Issue timeline */}
+      <motion.section
+        initial={motionInitial}
+        animate={{ opacity: 1, y: 0 }}
+        transition={
+          prefersReducedMotion
+            ? { duration: 0 }
+            : { duration: 0.3, delay: 0.1 }
+        }
+        aria-labelledby="issue-timeline-title"
+        className="rounded-2xl border border-base-300 bg-base-200/60 p-5 sm:p-8"
+      >
+        <div className="mb-7">
+          <h2
+            id="issue-timeline-title"
+            className="text-xl font-bold text-base-content sm:text-2xl"
+          >
+            Issue timeline
+          </h2>
+
+          <p className="mt-1 text-sm text-base-content/60">
+            Track the recorded updates for this report.
+          </p>
+        </div>
+
+        {sortedTimeline.length > 0 ? (
+          <div className="relative space-y-5">
             <div
               aria-hidden="true"
-              className="absolute left-[7px] top-2 bottom-2 w-px bg-base-300"
+              className="absolute bottom-5 left-[7px] top-5 w-px bg-base-300"
             />
 
-            {sortedTimeline.map((t, idx) => (
-              <motion.div
-                key={idx}
-                initial={prefersReducedMotion ? false : { opacity: 0, x: -12 }}
+            {sortedTimeline.map((item, index) => (
+              <motion.article
+                key={
+                  item._id ||
+                  `${item.status || "update"}-${item.date || "unknown"}-${index}`
+                }
+                initial={
+                  prefersReducedMotion
+                    ? false
+                    : { opacity: 0, x: -8 }
+                }
                 animate={{ opacity: 1, x: 0 }}
-                transition={{ duration: 0.3, delay: 0.05 * idx }}
+                transition={
+                  prefersReducedMotion
+                    ? { duration: 0 }
+                    : { duration: 0.25, delay: Math.min(index * 0.04, 0.2) }
+                }
                 className="relative flex items-start gap-4"
               >
-                <div className="w-4 h-4 mt-2 rounded-full border-2 border-primary bg-base-100 shrink-0 relative z-10" />
+                <span
+                  aria-hidden="true"
+                  className="relative z-10 mt-1.5 h-4 w-4 shrink-0 rounded-full border-2 border-primary bg-base-100"
+                />
 
-                <div className="flex-1 p-4 border-l-4 border-primary bg-base-100 rounded shadow-sm">
-                  <div className="flex justify-between items-center mb-1 text-sm gap-2 flex-wrap">
-                    <span className={`badge ${statusBadgeClass(t.status)}`}>{t.status}</span>
-                    <span className="text-base-content/50 text-xs">
-                      {t.date ? new Date(t.date).toLocaleString() : "Unknown date"}
+                <div className="min-w-0 flex-1 rounded-xl border border-base-300 bg-base-100 p-4 shadow-sm sm:p-5">
+                  <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                    <span
+                      className={`badge ${statusBadgeClass(item.status || "Pending")}`}
+                    >
+                      {item.status || "Update"}
                     </span>
+
+                    <time
+                      dateTime={
+                        item.date &&
+                        !Number.isNaN(new Date(item.date).getTime())
+                          ? new Date(item.date).toISOString()
+                          : undefined
+                      }
+                      className="text-xs text-base-content/55"
+                    >
+                      {formatDate(item.date)}
+                    </time>
                   </div>
 
-                  <p className="text-base-content/80">{t.message}</p>
-                  <p className="text-base-content/50 text-xs mt-1">By: {displayText(t.updatedBy)}</p>
+                  <p className="whitespace-pre-line break-words text-sm leading-6 text-base-content/80">
+                    {item.message || "Issue status updated."}
+                  </p>
+
+                  <p className="mt-3 break-words text-xs text-base-content/55">
+                    Updated by: {displayText(item.updatedBy)}
+                  </p>
                 </div>
-              </motion.div>
+              </motion.article>
             ))}
           </div>
-        </motion.div>
-      )}
-    </div>
+        ) : (
+          <p className="rounded-xl border border-dashed border-base-300 p-6 text-center text-sm text-base-content/60">
+            No timeline updates are available yet.
+          </p>
+        )}
+      </motion.section>
+    </main>
   );
 };
 

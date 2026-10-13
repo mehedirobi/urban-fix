@@ -1,54 +1,182 @@
-import React, { useState, useRef } from "react";
+import { useCallback, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { motion, useReducedMotion } from "framer-motion";
-import { MapPin, Upload, User, AlertTriangle, X } from "lucide-react";
+import {
+  MapPin,
+  Upload,
+  User,
+  AlertTriangle,
+  X,
+  Image as ImageIcon,
+  FileText,
+  CheckCircle2,
+  LoaderCircle,
+} from "lucide-react";
 import Swal from "sweetalert2";
+
 import useAuth from "../hooks/UseAuth";
 import useAxiosSecure from "../hooks/useAxiosSecure";
 
 const MAX_UPLOAD_MB = 8;
 const MAX_EDGE_PX = 1600;
 const DESCRIPTION_MAX = 1500;
+const TITLE_MAX = 120;
+const LOCATION_MAX = 200;
+const CATEGORY_MAX = 60;
+const ALLOWED_IMAGE_TYPES = [
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+];
+
+const CATEGORIES = [
+  "Road",
+  "Garbage",
+  "Water",
+  "Streetlight",
+  "Electricity",
+  "Drainage",
+  "Others",
+];
 
 const containerVariants = {
   hidden: {},
-  visible: { transition: { staggerChildren: 0.06 } },
+  visible: {
+    transition: { staggerChildren: 0.06 },
+  },
 };
 
 const fieldVariants = {
   hidden: { opacity: 0, y: 12 },
-  visible: { opacity: 1, y: 0, transition: { duration: 0.35, ease: "easeOut" } },
+  visible: {
+    opacity: 1,
+    y: 0,
+    transition: { duration: 0.3, ease: "easeOut" },
+  },
 };
 
-// Resize + compress in-browser so payloads stay small regardless of source photo size
+/**
+ * Resize and compress an image in the browser.
+ * Returns a JPEG data URL to preserve compatibility with
+ * backends that currently accept the `image` field as a string.
+ */
 const compressImage = (file) =>
   new Promise((resolve, reject) => {
     const reader = new FileReader();
-    reader.onload = (e) => {
+
+    reader.onerror = () => reject(new Error("Unable to read this image."));
+
+    reader.onload = () => {
       const img = new Image();
+
+      img.onerror = () =>
+        reject(new Error("This image could not be decoded."));
+
       img.onload = () => {
-        let { width, height } = img;
-        if (width > height && width > MAX_EDGE_PX) {
-          height = Math.round((height * MAX_EDGE_PX) / width);
-          width = MAX_EDGE_PX;
-        } else if (height > MAX_EDGE_PX) {
-          width = Math.round((width * MAX_EDGE_PX) / height);
-          height = MAX_EDGE_PX;
+        try {
+          const scale = Math.min(
+            1,
+            MAX_EDGE_PX / Math.max(img.naturalWidth, img.naturalHeight),
+          );
+
+          const width = Math.max(1, Math.round(img.naturalWidth * scale));
+          const height = Math.max(1, Math.round(img.naturalHeight * scale));
+
+          const canvas = document.createElement("canvas");
+          canvas.width = width;
+          canvas.height = height;
+
+          const context = canvas.getContext("2d");
+
+          if (!context) {
+            reject(new Error("Image processing is not supported."));
+            return;
+          }
+
+          context.drawImage(img, 0, 0, width, height);
+
+          const dataUrl = canvas.toDataURL("image/jpeg", 0.8);
+
+          if (!dataUrl.startsWith("data:image/jpeg;base64,")) {
+            reject(new Error("Unable to compress this image."));
+            return;
+          }
+
+          resolve(dataUrl);
+        } catch {
+          reject(new Error("Unable to process this image."));
         }
-        const canvas = document.createElement("canvas");
-        canvas.width = width;
-        canvas.height = height;
-        const ctx = canvas.getContext("2d");
-        ctx.drawImage(img, 0, 0, width, height);
-        resolve(canvas.toDataURL("image/jpeg", 0.8));
       };
-      img.onerror = reject;
-      img.src = e.target.result;
+
+      img.src = reader.result;
     };
-    reader.onerror = reject;
+
     reader.readAsDataURL(file);
   });
+
+const validateIssue = ({
+  title,
+  description,
+  category,
+  customCategory,
+  location,
+}) => {
+  const errors = {};
+
+  if (!title.trim()) {
+    errors.title = "Please enter an issue title.";
+  } else if (title.trim().length > TITLE_MAX) {
+    errors.title = `Title must be ${TITLE_MAX} characters or fewer.`;
+  }
+
+  if (!description.trim()) {
+    errors.description = "Please describe the issue.";
+  } else if (description.trim().length > DESCRIPTION_MAX) {
+    errors.description = `Description must be ${DESCRIPTION_MAX} characters or fewer.`;
+  }
+
+  if (!category) {
+    errors.category = "Please select a category.";
+  }
+
+  if (category === "Others") {
+    if (!customCategory.trim()) {
+      errors.customCategory = "Please specify the issue category.";
+    } else if (customCategory.trim().length > CATEGORY_MAX) {
+      errors.customCategory = `Category must be ${CATEGORY_MAX} characters or fewer.`;
+    }
+  }
+
+  if (!location.trim()) {
+    errors.location = "Please enter the issue location.";
+  } else if (location.trim().length > LOCATION_MAX) {
+    errors.location = `Location must be ${LOCATION_MAX} characters or fewer.`;
+  }
+
+  return errors;
+};
+
+const FormError = ({ id, children }) => {
+  if (!children) return null;
+
+  return (
+    <p id={id} role="alert" className="mt-1.5 text-sm text-error">
+      {children}
+    </p>
+  );
+};
+
+const FieldLabel = ({ htmlFor, children, optional = false }) => (
+  <label htmlFor={htmlFor} className="mb-2 block text-sm font-semibold">
+    {children}
+    {optional && (
+      <span className="ml-2 font-normal text-base-content/45">
+        (optional)
+      </span>
+    )}
+  </label>
+);
 
 const CreateIssue = () => {
   const { user } = useAuth();
@@ -56,7 +184,9 @@ const CreateIssue = () => {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const prefersReducedMotion = useReducedMotion();
+
   const fileInputRef = useRef(null);
+  const imageRequestRef = useRef(0);
 
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
@@ -64,345 +194,757 @@ const CreateIssue = () => {
   const [customCategory, setCustomCategory] = useState("");
   const [priority, setPriority] = useState("Normal");
   const [location, setLocation] = useState("");
+
   const [image, setImage] = useState("");
   const [preview, setPreview] = useState("");
   const [imageProcessing, setImageProcessing] = useState(false);
+  const [errors, setErrors] = useState({});
+
+  const isSubmitting = false;
 
   const createIssueMutation = useMutation({
     mutationFn: async (newIssue) => {
-      const res = await secureApi.post("/issues", newIssue);
-      return res.data;
+      const response = await secureApi.post("/issues", newIssue);
+      return response.data;
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["my-issues", user?.email] });
-      queryClient.invalidateQueries({ queryKey: ["issues"] });
-      Swal.fire({
+
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: ["issues"],
+        }),
+        queryClient.invalidateQueries({
+          queryKey: ["my-issues", user?.email],
+        }),
+      ]);
+
+      await Swal.fire({
         icon: "success",
-        title: "Issue Reported",
-        text: "Your issue has been submitted successfully.",
-        timer: 2000,
-        showConfirmButton: false,
+        title: "Issue reported successfully",
+        text: "Your report has been submitted.",
+        confirmButtonText: "View my issues",
+        confirmButtonColor: "#087f5b",
       });
+
       navigate("/dashboard/my-issues");
     },
-    onError: (err) => {
-      Swal.fire({
+
+    onError: async (error) => {
+      console.error("Issue submission failed:", error);
+
+      await Swal.fire({
         icon: "error",
-        title: "Submission Failed",
-        text: err.response?.data?.message || err.message || "Something went wrong.",
+        title: "Submission failed",
+        text:
+          error?.response?.data?.message ||
+          error?.message ||
+          "We couldn't submit your report. Please try again.",
+        confirmButtonColor: "#087f5b",
       });
     },
   });
 
-  const handleImageChange = async (e) => {
-    const file = e.target.files[0];
+  const setFieldError = useCallback((field, message) => {
+    setErrors((previous) => ({
+      ...previous,
+      [field]: message,
+    }));
+  }, []);
+
+  const handleImageChange = useCallback(async (event) => {
+    const file = event.target.files?.[0];
+
     if (!file) return;
 
-    if (!file.type.startsWith("image/")) {
-      Swal.fire({ icon: "error", title: "Invalid file", text: "Please select an image file." });
-      e.target.value = "";
+    const requestId = ++imageRequestRef.current;
+
+    // Clear the previous image before processing a replacement.
+    setImage("");
+    setPreview("");
+    setErrors((previous) => {
+      const next = { ...previous };
+      delete next.image;
+      return next;
+    });
+
+    if (!ALLOWED_IMAGE_TYPES.includes(file.type)) {
+      setFieldError(
+        "image",
+        "Choose a JPG, PNG, or WebP image.",
+      );
+
+      event.target.value = "";
       return;
     }
 
     if (file.size > MAX_UPLOAD_MB * 1024 * 1024) {
-      Swal.fire({
-        icon: "error",
-        title: "File too large",
-        text: `Please choose an image under ${MAX_UPLOAD_MB}MB.`,
-      });
-      e.target.value = "";
+      setFieldError(
+        "image",
+        `Choose an image smaller than ${MAX_UPLOAD_MB} MB.`,
+      );
+
+      event.target.value = "";
       return;
     }
+
+    setImageProcessing(true);
 
     try {
-      setImageProcessing(true);
-      const compressed = await compressImage(file);
-      setImage(compressed);
-      setPreview(compressed);
-    } catch (err) {
-      console.error("Image processing failed:", err);
-      Swal.fire({ icon: "error", title: "Couldn't process image", text: "Please try a different file." });
-    } finally {
-      setImageProcessing(false);
-    }
-  };
+      const compressedImage = await compressImage(file);
 
-  const removeImage = () => {
+      // Ignore an older processing request if another image was selected.
+      if (requestId !== imageRequestRef.current) return;
+
+      setImage(compressedImage);
+      setPreview(compressedImage);
+    } catch (error) {
+      if (requestId !== imageRequestRef.current) return;
+
+      console.error("Image processing failed:", error);
+
+      setFieldError(
+        "image",
+        error.message || "Unable to process this image. Try another file.",
+      );
+
+      if (fileInputRef.current) {
+        fileInputRef.current.value = "";
+      }
+    } finally {
+      if (requestId === imageRequestRef.current) {
+        setImageProcessing(false);
+      }
+    }
+  }, [setFieldError]);
+
+  const removeImage = useCallback(() => {
+    imageRequestRef.current += 1;
+
     setImage("");
     setPreview("");
-    if (fileInputRef.current) fileInputRef.current.value = "";
-  };
+    setImageProcessing(false);
 
-  const handleSubmit = (e) => {
-    e.preventDefault();
+    setErrors((previous) => {
+      const next = { ...previous };
+      delete next.image;
+      return next;
+    });
 
-    if (!user) {
-      Swal.fire({ icon: "warning", title: "Login Required", text: "Please login first." });
-      return;
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
     }
+  }, []);
 
-    const resolvedCategory = category === "Others" ? customCategory.trim() || "Others" : category;
+  const handleSubmit = useCallback(
+    async (event) => {
+      event.preventDefault();
 
-    const newIssue = {
-      title: title.trim(),
-      description: description.trim(),
-      category: resolvedCategory,
-      priority,
-      location: location.trim(),
-      image,
-      postedBy: {
-        email: user.email,
-        name: user.displayName || "User",
-        photoURL: user.photoURL || "",
-      },
-      status: "Pending",
-      upvotes: 0,
-      upvotedUsers: [],
-      timeline: [
-        {
-          status: "Pending",
-          message: "Issue reported by citizen",
-          updatedBy: user.email,
-          date: new Date(),
+      if (createIssueMutation.isPending || imageProcessing) return;
+
+      if (!user?.email) {
+        const result = await Swal.fire({
+          icon: "warning",
+          title: "Login required",
+          text: "Please sign in before reporting an issue.",
+          confirmButtonText: "Go to login",
+          showCancelButton: true,
+          cancelButtonText: "Cancel",
+          confirmButtonColor: "#087f5b",
+        });
+
+        if (result.isConfirmed) {
+          navigate("/login");
+        }
+
+        return;
+      }
+
+      const validationErrors = validateIssue({
+        title,
+        description,
+        category,
+        customCategory,
+        location,
+      });
+
+      setErrors(validationErrors);
+
+      if (Object.keys(validationErrors).length > 0) {
+        const firstField = Object.keys(validationErrors)[0];
+
+        document.getElementById(`issue-${firstField}`)?.focus();
+        return;
+      }
+
+      const resolvedCategory =
+        category === "Others"
+          ? customCategory.trim()
+          : category;
+
+      const newIssue = {
+        title: title.trim(),
+        description: description.trim(),
+        category: resolvedCategory,
+        priority,
+        location: location.trim(),
+        image,
+
+        postedBy: {
+          email: user.email,
+          name: user.displayName || "User",
+          photoURL: user.photoURL || "",
         },
-      ],
-    };
 
-    createIssueMutation.mutate(newIssue);
+        status: "Pending",
+        upvotes: 0,
+        upvotedUsers: [],
+
+        timeline: [
+          {
+            status: "Pending",
+            message: "Issue reported by citizen",
+            updatedBy: user.email,
+            date: new Date().toISOString(),
+          },
+        ],
+      };
+
+      createIssueMutation.mutate(newIssue);
+    },
+    [
+      user,
+      title,
+      description,
+      category,
+      customCategory,
+      priority,
+      location,
+      image,
+      imageProcessing,
+      createIssueMutation,
+      navigate,
+    ],
+  );
+
+  const busy = createIssueMutation.isPending || imageProcessing;
+
+  const handleTextChange = (setter, field) => (event) => {
+    setter(event.target.value);
+
+    setErrors((previous) => {
+      if (!previous[field]) return previous;
+
+      const next = { ...previous };
+      delete next[field];
+      return next;
+    });
   };
-
-  const isSubmitting = createIssueMutation.isPending;
 
   return (
-    <div className="bg-base-100 min-h-screen">
-      <div className="max-w-7xl mx-auto px-4 py-10">
-        {/* Hero Section */}
-        <motion.div
-          initial={{ opacity: 0, y: 25 }}
+    <main className="min-h-screen bg-base-100 text-base-content">
+      <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 sm:py-12">
+        {/* Hero */}
+        <motion.section
+          initial={prefersReducedMotion ? false : { opacity: 0, y: 18 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.5 }}
-          className="rounded-3xl bg-gradient-to-r from-primary to-secondary text-white p-8 md:p-12 mb-10"
+          transition={{ duration: 0.4 }}
+          className="relative mb-8 overflow-hidden rounded-3xl bg-primary px-6 py-10 text-primary-content sm:px-10 sm:py-14"
         >
-          <h1 className="text-3xl sm:text-4xl md:text-5xl font-bold mb-4">Report Urban Issues</h1>
-          <p className="max-w-3xl text-white/90 text-base md:text-lg">
-            Help improve your community by reporting infrastructure problems, road
-            damage, water supply issues, waste management concerns, and public service
-            failures.
-          </p>
-        </motion.div>
+          <div
+            aria-hidden="true"
+            className="pointer-events-none absolute -right-16 -top-20 h-64 w-64 rounded-full border-[34px] border-primary-content/10"
+          />
 
-        <div className="grid lg:grid-cols-3 gap-8">
+          <div className="relative z-10 max-w-3xl">
+            <span className="mb-4 inline-flex items-center gap-2 rounded-full border border-primary-content/20 bg-primary-content/10 px-3 py-1.5 text-sm font-medium">
+              <MapPin size={16} aria-hidden="true" />
+              Make your community better
+            </span>
+
+            <h1 className="text-3xl font-extrabold tracking-tight sm:text-4xl md:text-5xl">
+              Report an Issue
+            </h1>
+
+            <p className="mt-4 max-w-2xl leading-7 text-primary-content/80 sm:text-lg">
+              Help improve your community by reporting damaged roads, waste
+              problems, water supply issues, broken streetlights, and other
+              public infrastructure concerns.
+            </p>
+          </div>
+        </motion.section>
+
+        <div className="grid items-start gap-8 lg:grid-cols-3">
           {/* Sidebar */}
-          <motion.div
+          <motion.aside
             variants={prefersReducedMotion ? undefined : containerVariants}
-            initial="hidden"
-            animate="visible"
-            className="space-y-6"
+            initial={prefersReducedMotion ? false : "hidden"}
+            animate={prefersReducedMotion ? undefined : "visible"}
+            className="space-y-5 lg:sticky lg:top-6"
           >
-            <motion.div variants={fieldVariants} className="bg-base-200 rounded-3xl p-6 shadow-sm">
-              <User className="text-primary mb-3" size={28} />
-              <h3 className="text-xl font-bold mb-4">Reporter Information</h3>
-              <div className="space-y-2">
-                <p>
-                  <span className="font-semibold">Name:</span> {user?.displayName || "User"}
+            <motion.section
+              variants={prefersReducedMotion ? undefined : fieldVariants}
+              className="rounded-3xl border border-base-300 bg-base-100 p-6 shadow-sm"
+            >
+              <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-primary/10 text-primary">
+                <User size={24} aria-hidden="true" />
+              </div>
+
+              <h2 className="text-lg font-bold">Reporter information</h2>
+
+              <div className="mt-4 space-y-3 text-sm">
+                <div>
+                  <p className="text-base-content/50">Name</p>
+                  <p className="mt-1 break-words font-medium">
+                    {user?.displayName || "Signed-in user"}
+                  </p>
+                </div>
+
+                <div>
+                  <p className="text-base-content/50">Email</p>
+                  <p className="mt-1 break-all font-medium">
+                    {user?.email || "Sign in to report an issue"}
+                  </p>
+                </div>
+              </div>
+            </motion.section>
+
+            <motion.section
+              variants={prefersReducedMotion ? undefined : fieldVariants}
+              className="rounded-3xl border border-base-300 bg-base-200/60 p-6"
+            >
+              <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-warning/15 text-warning">
+                <AlertTriangle size={24} aria-hidden="true" />
+              </div>
+
+              <h2 className="text-lg font-bold">Reporting tips</h2>
+
+              <ul className="mt-4 space-y-3 text-sm text-base-content/70">
+                {[
+                  "Write a specific, descriptive title.",
+                  "Provide a precise location or landmark.",
+                  "Describe the problem and its impact.",
+                  "Choose the closest matching category.",
+                  "Upload a clear photo when possible.",
+                ].map((tip) => (
+                  <li key={tip} className="flex items-start gap-2">
+                    <CheckCircle2
+                      size={17}
+                      className="mt-0.5 shrink-0 text-primary"
+                      aria-hidden="true"
+                    />
+                    <span>{tip}</span>
+                  </li>
+                ))}
+              </ul>
+            </motion.section>
+
+            <div className="rounded-2xl bg-primary/5 p-5">
+              <div className="flex items-start gap-3">
+                <FileText
+                  size={20}
+                  className="mt-0.5 shrink-0 text-primary"
+                  aria-hidden="true"
+                />
+                <p className="text-sm leading-6 text-base-content/70">
+                  After submitting, you can follow your report's progress from
+                  the My Issues section of your dashboard.
                 </p>
-                <p className="break-all">
-                  <span className="font-semibold">Email:</span> {user?.email}
+              </div>
+            </div>
+          </motion.aside>
+
+          {/* Form */}
+          <motion.form
+            onSubmit={handleSubmit}
+            noValidate
+            variants={prefersReducedMotion ? undefined : containerVariants}
+            initial={prefersReducedMotion ? false : "hidden"}
+            animate={prefersReducedMotion ? undefined : "visible"}
+            className="space-y-6 rounded-3xl border border-base-300 bg-base-100 p-5 shadow-sm sm:p-8 lg:col-span-2"
+          >
+            <div className="border-b border-base-300 pb-5">
+              <h2 className="text-2xl font-bold">Issue details</h2>
+              <p className="mt-2 text-sm leading-6 text-base-content/60">
+                Fill in the details below. Fields marked with an asterisk are
+                required.
+              </p>
+            </div>
+
+            {/* Title */}
+            <motion.div variants={prefersReducedMotion ? undefined : fieldVariants}>
+              <FieldLabel htmlFor="issue-title">
+                Issue title <span className="text-error">*</span>
+              </FieldLabel>
+
+              <input
+                id="issue-title"
+                name="title"
+                type="text"
+                placeholder="e.g. Broken streetlight near the main road"
+                value={title}
+                onChange={handleTextChange(setTitle, "title")}
+                maxLength={TITLE_MAX}
+                required
+                disabled={busy}
+                aria-invalid={Boolean(errors.title)}
+                aria-describedby={errors.title ? "title-error" : "title-count"}
+                className={`input input-bordered w-full bg-base-100 ${
+                  errors.title ? "input-error" : ""
+                }`}
+              />
+
+              <div className="mt-1 flex justify-between gap-3">
+                <FormError id="title-error">{errors.title}</FormError>
+                <span
+                  id="title-count"
+                  className="ml-auto shrink-0 text-xs text-base-content/45"
+                >
+                  {title.length}/{TITLE_MAX}
+                </span>
+              </div>
+            </motion.div>
+
+            {/* Description */}
+            <motion.div variants={prefersReducedMotion ? undefined : fieldVariants}>
+              <FieldLabel htmlFor="issue-description">
+                Description <span className="text-error">*</span>
+              </FieldLabel>
+
+              <textarea
+                id="issue-description"
+                name="description"
+                placeholder="Describe what happened, where it occurred, and how it affects the community..."
+                value={description}
+                onChange={handleTextChange(setDescription, "description")}
+                maxLength={DESCRIPTION_MAX}
+                required
+                disabled={busy}
+                aria-invalid={Boolean(errors.description)}
+                aria-describedby={
+                  errors.description
+                    ? "description-error description-count"
+                    : "description-count"
+                }
+                className={`textarea textarea-bordered min-h-40 w-full resize-y bg-base-100 leading-7 ${
+                  errors.description ? "textarea-error" : ""
+                }`}
+              />
+
+              <div className="mt-1 flex justify-between gap-3">
+                <FormError id="description-error">
+                  {errors.description}
+                </FormError>
+                <span
+                  id="description-count"
+                  className="ml-auto shrink-0 text-xs text-base-content/45"
+                  aria-live="polite"
+                >
+                  {description.length}/{DESCRIPTION_MAX}
+                </span>
+              </div>
+            </motion.div>
+
+            {/* Category and priority */}
+            <motion.div
+              variants={prefersReducedMotion ? undefined : fieldVariants}
+              className="grid gap-5 sm:grid-cols-2"
+            >
+              <div>
+                <FieldLabel htmlFor="issue-category">
+                  Category <span className="text-error">*</span>
+                </FieldLabel>
+
+                <select
+                  id="issue-category"
+                  name="category"
+                  value={category}
+                  onChange={(event) => {
+                    setCategory(event.target.value);
+                    setErrors((previous) => {
+                      const next = { ...previous };
+                      delete next.category;
+                      delete next.customCategory;
+                      return next;
+                    });
+                  }}
+                  disabled={busy}
+                  aria-invalid={Boolean(errors.category)}
+                  aria-describedby={
+                    errors.category ? "category-error" : undefined
+                  }
+                  className={`select select-bordered w-full bg-base-100 ${
+                    errors.category ? "select-error" : ""
+                  }`}
+                >
+                  {CATEGORIES.map((item) => (
+                    <option key={item} value={item}>
+                      {item}
+                    </option>
+                  ))}
+                </select>
+
+                <FormError id="category-error">
+                  {errors.category}
+                </FormError>
+
+                {category === "Others" && (
+                  <div className="mt-3">
+                    <FieldLabel htmlFor="issue-customCategory">
+                      Specify category <span className="text-error">*</span>
+                    </FieldLabel>
+
+                    <input
+                      id="issue-customCategory"
+                      name="customCategory"
+                      type="text"
+                      placeholder="Enter the category"
+                      value={customCategory}
+                      onChange={handleTextChange(
+                        setCustomCategory,
+                        "customCategory",
+                      )}
+                      maxLength={CATEGORY_MAX}
+                      required
+                      disabled={busy}
+                      aria-invalid={Boolean(errors.customCategory)}
+                      aria-describedby={
+                        errors.customCategory
+                          ? "customCategory-error"
+                          : undefined
+                      }
+                      className={`input input-bordered w-full bg-base-100 ${
+                        errors.customCategory ? "input-error" : ""
+                      }`}
+                    />
+
+                    <FormError id="customCategory-error">
+                      {errors.customCategory}
+                    </FormError>
+                  </div>
+                )}
+              </div>
+
+              <div>
+                <FieldLabel htmlFor="issue-priority">
+                  Priority <span className="text-error">*</span>
+                </FieldLabel>
+
+                <select
+                  id="issue-priority"
+                  name="priority"
+                  value={priority}
+                  onChange={(event) => setPriority(event.target.value)}
+                  disabled={busy}
+                  className="select select-bordered w-full bg-base-100"
+                >
+                  <option value="Normal">Normal</option>
+                  <option value="High">High</option>
+                </select>
+
+                <p className="mt-2 text-xs leading-5 text-base-content/50">
+                  Select High only when the issue requires urgent attention.
                 </p>
               </div>
             </motion.div>
 
-            <motion.div variants={fieldVariants} className="bg-base-200 rounded-3xl p-6 shadow-sm">
-              <AlertTriangle className="text-warning mb-3" size={28} />
-              <h3 className="text-xl font-bold mb-4">Reporting Tips</h3>
-              <ul className="space-y-3 text-sm opacity-80">
-                <li>• Use a clear and specific title.</li>
-                <li>• Add an exact location.</li>
-                <li>• Upload a quality image.</li>
-                <li>• Explain the issue clearly.</li>
-                <li>• Select correct category.</li>
-              </ul>
-            </motion.div>
-          </motion.div>
+            {/* Location */}
+            <motion.div variants={prefersReducedMotion ? undefined : fieldVariants}>
+              <FieldLabel htmlFor="issue-location">
+                Location <span className="text-error">*</span>
+              </FieldLabel>
 
-          {/* Form */}
-          <div className="lg:col-span-2">
-            <motion.form
-              onSubmit={handleSubmit}
-              variants={prefersReducedMotion ? undefined : containerVariants}
-              initial="hidden"
-              animate="visible"
-              className="bg-base-200 rounded-3xl p-6 md:p-8 shadow-sm space-y-6"
-            >
-              {/* Title */}
-              <motion.div variants={fieldVariants}>
-                <label htmlFor="issue-title" className="font-medium mb-2 block">
-                  Issue Title
-                </label>
+              <div className="relative">
+                <MapPin
+                  size={18}
+                  className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-base-content/40"
+                  aria-hidden="true"
+                />
+
                 <input
-                  id="issue-title"
+                  id="issue-location"
+                  name="location"
                   type="text"
-                  placeholder="Broken Streetlight Near Main Road"
-                  value={title}
-                  onChange={(e) => setTitle(e.target.value)}
+                  placeholder="Street, area, landmark, or address"
+                  value={location}
+                  onChange={handleTextChange(setLocation, "location")}
+                  maxLength={LOCATION_MAX}
                   required
-                  disabled={isSubmitting}
-                  className="input input-bordered w-full"
+                  disabled={busy}
+                  aria-invalid={Boolean(errors.location)}
+                  aria-describedby={
+                    errors.location ? "location-error" : undefined
+                  }
+                  className={`input input-bordered w-full bg-base-100 pl-11 ${
+                    errors.location ? "input-error" : ""
+                  }`}
                 />
-              </motion.div>
+              </div>
 
-              {/* Description */}
-              <motion.div variants={fieldVariants}>
-                <label htmlFor="issue-description" className="font-medium mb-2 block">
-                  Description
-                </label>
-                <textarea
-                  id="issue-description"
-                  placeholder="Describe the issue in detail..."
-                  value={description}
-                  onChange={(e) => setDescription(e.target.value)}
-                  maxLength={DESCRIPTION_MAX}
-                  required
-                  disabled={isSubmitting}
-                  className="textarea textarea-bordered min-h-[160px] w-full"
-                />
-                <p className="text-xs text-base-content/50 mt-1 text-right">
-                  {description.length}/{DESCRIPTION_MAX}
-                </p>
-              </motion.div>
+              <FormError id="location-error">{errors.location}</FormError>
 
-              {/* Category + Priority */}
-              <motion.div variants={fieldVariants} className="grid md:grid-cols-2 gap-4">
-                <div>
-                  <label htmlFor="issue-category" className="font-medium mb-2 block">
-                    Category
-                  </label>
-                  <select
-                    id="issue-category"
-                    value={category}
-                    onChange={(e) => setCategory(e.target.value)}
-                    disabled={isSubmitting}
-                    className="select select-bordered w-full"
-                  >
-                    <option>Road</option>
-                    <option>Garbage</option>
-                    <option>Water</option>
-                    <option>Streetlight</option>
-                    <option>Electricity</option>
-                    <option>Drainage</option>
-                    <option>Others</option>
-                  </select>
-                  {category === "Others" && (
-                    <input
-                      type="text"
-                      placeholder="Specify category"
-                      value={customCategory}
-                      onChange={(e) => setCustomCategory(e.target.value)}
-                      disabled={isSubmitting}
-                      className="input input-bordered w-full mt-2"
-                    />
-                  )}
-                </div>
+              <p className="mt-1.5 text-xs text-base-content/50">
+                Include a nearby landmark to help the responsible team find
+                the issue.
+              </p>
+            </motion.div>
 
-                <div>
-                  <label htmlFor="issue-priority" className="font-medium mb-2 block">
-                    Priority
-                  </label>
-                  <select
-                    id="issue-priority"
-                    value={priority}
-                    onChange={(e) => setPriority(e.target.value)}
-                    disabled={isSubmitting}
-                    className="select select-bordered w-full"
-                  >
-                    <option value="Normal">Normal</option>
-                    <option value="High">High</option>
-                  </select>
-                </div>
-              </motion.div>
+            {/* Image upload */}
+            <motion.div variants={prefersReducedMotion ? undefined : fieldVariants}>
+              <FieldLabel htmlFor="issue-image" optional>
+                Issue photo
+              </FieldLabel>
 
-              {/* Location */}
-              <motion.div variants={fieldVariants}>
-                <label htmlFor="issue-location" className="font-medium mb-2 block">
-                  Location
-                </label>
-                <div className="relative">
-                  <MapPin
-                    size={18}
-                    className="absolute left-4 top-1/2 -translate-y-1/2 text-base-content/40"
-                  />
-                  <input
-                    id="issue-location"
-                    type="text"
-                    placeholder="Enter exact location"
-                    value={location}
-                    onChange={(e) => setLocation(e.target.value)}
-                    required
-                    disabled={isSubmitting}
-                    className="input input-bordered w-full pl-12"
-                  />
-                </div>
-              </motion.div>
+              <div className="rounded-2xl border-2 border-dashed border-base-300 bg-base-200/40 p-4 sm:p-6">
+                <div className="flex flex-col items-center text-center">
+                  <div className="mb-3 flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/10 text-primary">
+                    {imageProcessing ? (
+                      <LoaderCircle
+                        size={28}
+                        className="animate-spin"
+                        aria-hidden="true"
+                      />
+                    ) : (
+                      <ImageIcon size={28} aria-hidden="true" />
+                    )}
+                  </div>
 
-              {/* Upload */}
-              <motion.div variants={fieldVariants}>
-                <label htmlFor="issue-image" className="font-medium mb-3 block">
-                  Upload Image
-                </label>
+                  <p className="font-semibold">
+                    {imageProcessing
+                      ? "Processing your photo..."
+                      : "Add a photo of the issue"}
+                  </p>
 
-                <div className="border-2 border-dashed border-base-300 rounded-2xl p-6 text-center">
-                  <Upload size={40} className="mx-auto text-primary mb-3" />
+                  <p className="mt-1 text-sm leading-6 text-base-content/55">
+                    JPG, PNG, or WebP. Maximum {MAX_UPLOAD_MB} MB before
+                    compression.
+                  </p>
+
                   <input
                     id="issue-image"
                     ref={fileInputRef}
+                    name="image"
                     type="file"
-                    accept="image/*"
+                    accept="image/jpeg,image/png,image/webp"
                     onChange={handleImageChange}
-                    disabled={isSubmitting || imageProcessing}
-                    className="file-input file-input-bordered w-full"
+                    disabled={busy}
+                    aria-invalid={Boolean(errors.image)}
+                    aria-describedby={
+                      errors.image ? "image-error" : "image-help"
+                    }
+                    className="file-input file-input-bordered mt-4 w-full max-w-sm bg-base-100"
                   />
-                  <p className="text-sm opacity-70 mt-3">
-                    {imageProcessing
-                      ? "Processing image..."
-                      : `Upload a clear image of the issue (max ${MAX_UPLOAD_MB}MB).`}
-                  </p>
-                </div>
-              </motion.div>
 
-              {/* Preview */}
-              {preview && (
-                <motion.div
-                  initial={{ opacity: 0, scale: 0.98 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  className="relative overflow-hidden rounded-2xl"
-                >
-                  <img src={preview} alt="Preview" className="w-full h-72 object-cover" />
+                  <span id="image-help" className="sr-only">
+                    Optional image attachment for your issue report.
+                  </span>
+
+                  <FormError id="image-error">{errors.image}</FormError>
+
+                  {image && (
+                    <p className="mt-3 flex items-center gap-2 text-sm text-success">
+                      <CheckCircle2 size={16} aria-hidden="true" />
+                      Photo ready to upload
+                    </p>
+                  )}
+                </div>
+              </div>
+            </motion.div>
+
+            {/* Preview */}
+            {preview && (
+              <motion.div
+                initial={prefersReducedMotion ? false : { opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="overflow-hidden rounded-2xl border border-base-300"
+              >
+                <div className="flex items-center justify-between gap-3 border-b border-base-300 px-4 py-3">
+                  <div className="flex items-center gap-2 text-sm font-semibold">
+                    <ImageIcon
+                      size={17}
+                      className="text-primary"
+                      aria-hidden="true"
+                    />
+                    Image preview
+                  </div>
+
                   <button
                     type="button"
                     onClick={removeImage}
-                    disabled={isSubmitting}
-                    aria-label="Remove image"
-                    className="absolute top-3 right-3 w-9 h-9 rounded-full bg-black/60 text-white flex items-center justify-center hover:bg-black/80 transition-colors"
+                    disabled={busy}
+                    className="btn btn-ghost btn-sm gap-1 text-error"
+                    aria-label="Remove selected image"
                   >
-                    <X size={18} />
+                    <X size={16} aria-hidden="true" />
+                    Remove
                   </button>
-                </motion.div>
-              )}
+                </div>
 
-              {/* Submit */}
-              <motion.button
-                variants={fieldVariants}
-                type="submit"
-                disabled={isSubmitting || imageProcessing}
-                className="btn btn-primary btn-lg w-full disabled:opacity-70"
+                <img
+                  src={preview}
+                  alt="Preview of the selected issue"
+                  className="max-h-96 w-full bg-base-200 object-contain"
+                />
+              </motion.div>
+            )}
+
+            {/* Submission error */}
+            {createIssueMutation.isError && (
+              <div
+                role="alert"
+                className="rounded-xl border border-error/25 bg-error/5 p-4 text-sm"
               >
-                {isSubmitting ? "Submitting..." : "Submit Issue"}
-              </motion.button>
-            </motion.form>
-          </div>
+                <p className="font-semibold text-error">
+                  We couldn't submit your report.
+                </p>
+                <p className="mt-1 text-base-content/70">
+                  Check your connection and try again. Your entered details
+                  are still available in the form.
+                </p>
+              </div>
+            )}
+
+            {/* Submit */}
+            <motion.div variants={prefersReducedMotion ? undefined : fieldVariants}>
+              <button
+                type="submit"
+                disabled={busy}
+                className="btn btn-primary min-h-12 w-full rounded-xl text-base"
+              >
+                {isSubmitting || createIssueMutation.isPending ? (
+                  <>
+                    <LoaderCircle
+                      size={19}
+                      className="animate-spin"
+                      aria-hidden="true"
+                    />
+                    Submitting report...
+                  </>
+                ) : imageProcessing ? (
+                  <>
+                    <LoaderCircle
+                      size={19}
+                      className="animate-spin"
+                      aria-hidden="true"
+                    />
+                    Processing image...
+                  </>
+                ) : (
+                  <>
+                    <Upload size={19} aria-hidden="true" />
+                    Submit Issue
+                  </>
+                )}
+              </button>
+
+              <p className="mt-3 text-center text-xs leading-5 text-base-content/50">
+                By submitting, you confirm that the information provided is
+                accurate to the best of your knowledge.
+              </p>
+            </motion.div>
+          </motion.form>
         </div>
       </div>
-    </div>
+    </main>
   );
 };
 
