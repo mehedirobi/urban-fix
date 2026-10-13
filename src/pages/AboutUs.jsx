@@ -1,318 +1,481 @@
-import React, { useEffect, useRef, useState } from "react";
+import { memo, useEffect, useRef, useState } from "react";
 import { motion, useReducedMotion, useInView } from "framer-motion";
 import { Link } from "react-router-dom";
 import {
   Wrench,
-  Shield,
+  ShieldCheck,
   Users,
   Building2,
-  Globe,
+  Globe2,
   ArrowRight,
+  Camera,
+  ClipboardCheck,
+  HardHat,
+  Activity,
 } from "lucide-react";
 
 const features = [
   {
-    icon: Wrench,
-    title: "Easy Reporting",
-    desc: "Submit infrastructure issues with photos, location, and detailed descriptions in seconds.",
+    icon: Camera,
+    title: "Simple Issue Reporting",
+    description:
+      "Report potholes, damaged roads, drainage problems, and other public infrastructure issues with photos and location details.",
   },
   {
-    icon: Shield,
-    title: "Safe & Verified",
-    desc: "Every report and resolution process is monitored to ensure transparency and accountability.",
+    icon: ShieldCheck,
+    title: "Transparent Tracking",
+    description:
+      "Follow issue progress through status updates and a clear reporting workflow.",
   },
   {
     icon: Users,
-    title: "Community Driven",
-    desc: "Citizens actively contribute to building cleaner, safer, and smarter cities.",
+    title: "Community Participation",
+    description:
+      "Give citizens a practical way to raise concerns, support reports, and contribute to better neighborhoods.",
   },
   {
     icon: Building2,
-    title: "City-Wide Coverage",
-    desc: "Supporting urban infrastructure maintenance across multiple communities.",
+    title: "Organized Management",
+    description:
+      "Help administrators and maintenance teams review reports, prioritize problems, and coordinate responses.",
   },
 ];
 
 const steps = [
-  "Citizens submit reports with photos, location, and issue details.",
-  "Administrators review and verify the submitted issue.",
-  "Maintenance teams are assigned to resolve the problem.",
-  "Citizens track progress through real-time updates.",
+  {
+    title: "Report an issue",
+    description:
+      "Submit a description, photos, category, and location to explain the problem.",
+    icon: Camera,
+  },
+  {
+    title: "Review and verification",
+    description:
+      "The responsible team reviews the submitted report and verifies its details.",
+    icon: ClipboardCheck,
+  },
+  {
+    title: "Coordinate action",
+    description:
+      "Administrators and assigned staff manage the issue and work toward a resolution.",
+    icon: HardHat,
+  },
+  {
+    title: "Track progress",
+    description:
+      "Citizens can revisit the report and follow its status as it progresses.",
+    icon: Activity,
+  },
 ];
 
-const stats = [
-  { value: 10000, suffix: "+", label: "Issues Reported" },
-  { value: 95, suffix: "%", label: "Resolution Rate" },
-  { value: 1000, suffix: "+", label: "Active Citizens" },
-  { value: 64, suffix: "+", label: "Coverage Areas" },
+const highlights = [
+  {
+    icon: Wrench,
+    title: "Practical solutions",
+    description:
+      "Turn everyday infrastructure concerns into organized, actionable reports.",
+  },
+  {
+    icon: Globe2,
+    title: "Better communities",
+    description:
+      "Encourage collaboration toward cleaner, safer, and more accessible public spaces.",
+  },
 ];
 
 const containerVariants = {
   hidden: {},
-  visible: { transition: { staggerChildren: 0.12 } },
+  visible: {
+    transition: {
+      staggerChildren: 0.1,
+    },
+  },
 };
 
 const itemVariants = {
-  hidden: { opacity: 0, y: 24 },
-  visible: { opacity: 1, y: 0, transition: { duration: 0.5, ease: "easeOut" } },
+  hidden: {
+    opacity: 0,
+    y: 20,
+  },
+  visible: {
+    opacity: 1,
+    y: 0,
+    transition: {
+      duration: 0.45,
+      ease: "easeOut",
+    },
+  },
 };
 
-// Small self-contained count-up, fires once when scrolled into view
-const CountUpStat = ({ value, suffix, label }) => {
-  const ref = useRef(null);
-  const inView = useInView(ref, { once: true, amount: 0.6 });
-  const prefersReducedMotion = useReducedMotion();
-  const [display, setDisplay] = useState(prefersReducedMotion ? value : 0);
-
-  useEffect(() => {
-    if (!inView || prefersReducedMotion) return;
-    const duration = 1200;
-    const start = performance.now();
-    let frame;
-    const tick = (now) => {
-      const progress = Math.min((now - start) / duration, 1);
-      const eased = 1 - Math.pow(1 - progress, 3);
-      setDisplay(Math.round(value * eased));
-      if (progress < 1) frame = requestAnimationFrame(tick);
-    };
-    frame = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(frame);
-  }, [inView, value, prefersReducedMotion]);
-
-  const formatted = value >= 1000 ? `${Math.round(display / 1000)}K` : display;
-
+const Reveal = memo(function Reveal({
+  children,
+  className = "",
+  reducedMotion,
+  delay = 0,
+}) {
   return (
     <motion.div
-      ref={ref}
-      variants={itemVariants}
-      className="bg-base-200 rounded-3xl p-8 text-center shadow-sm hover:shadow-lg transition-shadow"
+      initial={reducedMotion ? false : { opacity: 0, y: 20 }}
+      whileInView={reducedMotion ? undefined : { opacity: 1, y: 0 }}
+      viewport={{ once: true, amount: 0.15 }}
+      transition={{ duration: 0.45, delay, ease: "easeOut" }}
+      className={className}
     >
-      <h2 className="text-4xl md:text-5xl font-bold text-primary tabular-nums">
-        {formatted}
-        {suffix}
-      </h2>
-      <p className="mt-3 opacity-70">{label}</p>
+      {children}
     </motion.div>
   );
-};
+});
 
-const AboutUs = () => {
-  const prefersReducedMotion = useReducedMotion();
+const SectionHeading = memo(function SectionHeading({
+  eyebrow,
+  title,
+  description,
+}) {
+  return (
+    <div className="mx-auto mb-12 max-w-3xl text-center">
+      {eyebrow && (
+        <span className="mb-3 inline-block text-sm font-semibold uppercase tracking-[0.16em] text-primary">
+          {eyebrow}
+        </span>
+      )}
+
+      <h2 className="text-3xl font-bold tracking-tight sm:text-4xl">
+        {title}
+      </h2>
+
+      {description && (
+        <p className="mx-auto mt-4 max-w-2xl leading-7 text-base-content/70 sm:text-lg">
+          {description}
+        </p>
+      )}
+    </div>
+  );
+});
+
+const FeatureCard = memo(function FeatureCard({
+  feature,
+  reducedMotion,
+}) {
+  const Icon = feature.icon;
 
   return (
-    <div className="bg-base-100">
-      {/* HERO */}
-      <section className="relative overflow-hidden">
-        <div className="max-w-7xl mx-auto px-6 py-24 text-center">
-          <motion.div
-            initial={{ opacity: 0, y: -30 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.6 }}
-          >
-            <span className="badge badge-primary badge-lg mb-6">About UrbanFix</span>
+    <motion.article
+      variants={reducedMotion ? undefined : itemVariants}
+      whileHover={reducedMotion ? undefined : { y: -5 }}
+      className="group h-full rounded-2xl border border-base-300 bg-base-100 p-6 shadow-sm transition-shadow duration-300 hover:shadow-lg sm:p-7"
+    >
+      <div className="mb-5 flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10 text-primary transition-colors group-hover:bg-primary group-hover:text-primary-content">
+        <Icon size={24} strokeWidth={1.8} aria-hidden="true" />
+      </div>
 
-            <h1 className="text-4xl sm:text-5xl md:text-7xl font-extrabold leading-tight">
-              Building Better Cities
-              <span className="block text-primary">Through Technology</span>
+      <h3 className="text-lg font-bold sm:text-xl">{feature.title}</h3>
+
+      <p className="mt-3 leading-7 text-base-content/70">
+        {feature.description}
+      </p>
+    </motion.article>
+  );
+});
+
+const StepCard = memo(function StepCard({ step, index, reducedMotion }) {
+  const Icon = step.icon;
+
+  return (
+    <motion.li
+      variants={reducedMotion ? undefined : itemVariants}
+      className="relative flex gap-4 sm:gap-5"
+    >
+      <div className="relative z-10 flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-primary text-primary-content shadow-sm">
+        <Icon size={22} aria-hidden="true" />
+      </div>
+
+      <div className="flex-1 rounded-2xl border border-base-300 bg-base-100 p-5 shadow-sm sm:p-6">
+        <span className="text-xs font-bold uppercase tracking-widest text-primary">
+          Step {index + 1}
+        </span>
+
+        <h3 className="mt-2 text-lg font-bold">{step.title}</h3>
+
+        <p className="mt-2 leading-7 text-base-content/70">
+          {step.description}
+        </p>
+      </div>
+    </motion.li>
+  );
+});
+
+const AboutUs = () => {
+  const reducedMotion = useReducedMotion();
+
+  return (
+    <main className="overflow-hidden bg-base-100 text-base-content">
+      {/* Hero */}
+      <section className="relative isolate">
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-0 -z-10 bg-[radial-gradient(ellipse_at_top,oklch(var(--p)/0.12),transparent_65%)]"
+        />
+
+        <div className="mx-auto max-w-7xl px-5 py-20 sm:px-6 sm:py-28 lg:px-8 lg:py-32">
+          <Reveal
+            reducedMotion={reducedMotion}
+            className="mx-auto max-w-4xl text-center"
+          >
+            <span className="badge badge-primary badge-outline mb-6 px-4 py-3 font-semibold">
+              About UrbanFix
+            </span>
+
+            <h1 className="text-4xl font-extrabold leading-[1.12] tracking-tight sm:text-5xl md:text-6xl lg:text-7xl">
+              Building better cities
+              <span className="mt-2 block text-primary">
+                through collective action.
+              </span>
             </h1>
 
-            <p className="max-w-3xl mx-auto mt-6 text-base sm:text-lg md:text-xl opacity-80">
-              UrbanFix empowers citizens and authorities to work together in identifying,
-              tracking, and resolving public infrastructure issues faster and more
-              transparently.
+            <p className="mx-auto mt-6 max-w-3xl text-base leading-8 text-base-content/70 sm:text-lg md:text-xl">
+              UrbanFix connects citizens, administrators, and maintenance
+              teams through a more organized approach to reporting, tracking,
+              and managing public infrastructure issues.
             </p>
-          </motion.div>
-        </div>
-      </section>
 
-      {/* STATS */}
-      <motion.section
-        variants={prefersReducedMotion ? undefined : containerVariants}
-        initial="hidden"
-        whileInView="visible"
-        viewport={{ once: true, amount: 0.2 }}
-        className="max-w-7xl mx-auto px-6 pb-20"
-      >
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-6">
-          {stats.map((stat) => (
-            <CountUpStat key={stat.label} {...stat} />
-          ))}
-        </div>
-      </motion.section>
-
-      {/* FEATURES */}
-      <section className="max-w-7xl mx-auto px-6 py-20">
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true, amount: 0.4 }}
-          transition={{ duration: 0.5 }}
-          className="text-center mb-14"
-        >
-          <h2 className="text-3xl md:text-4xl font-bold">Why People Choose UrbanFix</h2>
-          <p className="mt-4 opacity-70 max-w-2xl mx-auto">
-            Designed to simplify urban issue reporting and ensure transparency throughout
-            the resolution process.
-          </p>
-        </motion.div>
-
-        <motion.div
-          variants={prefersReducedMotion ? undefined : containerVariants}
-          initial="hidden"
-          whileInView="visible"
-          viewport={{ once: true, amount: 0.15 }}
-          className="grid md:grid-cols-2 lg:grid-cols-4 gap-8"
-        >
-          {features.map((feature) => {
-            const Icon = feature.icon;
-            return (
-              <motion.div
-                key={feature.title}
-                variants={itemVariants}
-                whileHover={prefersReducedMotion ? undefined : { y: -8 }}
-                className="bg-base-100 border border-base-300 rounded-3xl p-8 shadow-sm hover:shadow-xl transition-shadow"
+            <div className="mt-9 flex flex-col justify-center gap-3 sm:flex-row">
+              <Link
+                to="/create-issue"
+                className="btn btn-primary min-h-12 rounded-full px-7"
               >
-                <div className="w-14 h-14 rounded-2xl bg-primary/10 flex items-center justify-center mb-5">
-                  <Icon className="w-7 h-7 text-primary" />
-                </div>
-                <h3 className="text-xl font-bold mb-3">{feature.title}</h3>
-                <p className="opacity-70 leading-relaxed">{feature.desc}</p>
-              </motion.div>
-            );
-          })}
+                Report an Issue
+                <ArrowRight size={18} aria-hidden="true" />
+              </Link>
+
+              <Link
+                to="/all-issues"
+                className="btn btn-outline min-h-12 rounded-full px-7"
+              >
+                Explore Issues
+              </Link>
+            </div>
+          </Reveal>
+
+          <div className="mx-auto mt-16 grid max-w-5xl grid-cols-1 gap-4 sm:grid-cols-3 sm:gap-5">
+            {[
+              {
+                value: "Report",
+                label: "Document infrastructure problems",
+              },
+              {
+                value: "Track",
+                label: "Follow issue status and progress",
+              },
+              {
+                value: "Improve",
+                label: "Support better community outcomes",
+              },
+            ].map((item, index) => (
+              <Reveal
+                key={item.value}
+                reducedMotion={reducedMotion}
+                delay={index * 0.08}
+                className="rounded-2xl border border-base-300 bg-base-100/80 p-5 text-center shadow-sm backdrop-blur-sm sm:p-6"
+              >
+                <p className="text-2xl font-bold text-primary sm:text-3xl">
+                  {item.value}
+                </p>
+                <p className="mt-2 text-sm leading-6 text-base-content/70">
+                  {item.label}
+                </p>
+              </Reveal>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* Features */}
+      <section
+        aria-labelledby="features-heading"
+        className="mx-auto max-w-7xl px-5 py-16 sm:px-6 sm:py-20 lg:px-8"
+      >
+        <SectionHeading
+          eyebrow="Why UrbanFix"
+          title="A clearer path from reporting to resolution"
+          description="A practical platform designed to make public infrastructure reporting more accessible, organized, and transparent."
+        />
+
+        <motion.div
+          variants={reducedMotion ? undefined : containerVariants}
+          initial={reducedMotion ? false : "hidden"}
+          whileInView={reducedMotion ? undefined : "visible"}
+          viewport={{ once: true, amount: 0.12 }}
+          className="grid gap-5 sm:grid-cols-2 lg:grid-cols-4"
+        >
+          {features.map((feature) => (
+            <FeatureCard
+              key={feature.title}
+              feature={feature}
+              reducedMotion={reducedMotion}
+            />
+          ))}
         </motion.div>
       </section>
 
-      {/* HOW IT WORKS */}
-      <section className="bg-base-200">
-        <div className="max-w-5xl mx-auto px-6 py-20">
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true, amount: 0.4 }}
-            transition={{ duration: 0.5 }}
-            className="text-center mb-14"
-          >
-            <h2 className="text-3xl md:text-4xl font-bold">How UrbanFix Works</h2>
-          </motion.div>
+      {/* How it works */}
+      <section
+        aria-labelledby="workflow-heading"
+        className="bg-base-200/70"
+      >
+        <div className="mx-auto max-w-5xl px-5 py-16 sm:px-6 sm:py-20 lg:px-8">
+          <SectionHeading
+            eyebrow="The process"
+            title="How UrbanFix works"
+            description="A straightforward workflow helps turn reported problems into trackable tasks."
+          />
 
-          <motion.div
-            variants={prefersReducedMotion ? undefined : containerVariants}
-            initial="hidden"
-            whileInView="visible"
+          <motion.ol
+            variants={reducedMotion ? undefined : containerVariants}
+            initial={reducedMotion ? false : "hidden"}
+            whileInView={reducedMotion ? undefined : "visible"}
             viewport={{ once: true, amount: 0.1 }}
-            className="relative space-y-8"
+            className="relative space-y-5"
           >
-            {/* Connecting line — steps are a real sequence, so this earns its place */}
             <div
               aria-hidden="true"
-              className="absolute left-6 top-6 bottom-6 w-px bg-base-300 hidden sm:block"
+              className="absolute bottom-8 left-6 top-8 hidden w-px bg-base-300 sm:block"
             />
 
             {steps.map((step, index) => (
-              <motion.div key={step} variants={itemVariants} className="relative flex gap-5 items-start">
-                <div className="w-12 h-12 rounded-full bg-primary text-primary-content flex items-center justify-center font-bold shrink-0 relative z-10">
-                  {index + 1}
-                </div>
-                <div className="bg-base-100 rounded-2xl p-5 shadow-sm flex-1">{step}</div>
-              </motion.div>
+              <StepCard
+                key={step.title}
+                step={step}
+                index={index}
+                reducedMotion={reducedMotion}
+              />
             ))}
-          </motion.div>
+          </motion.ol>
         </div>
       </section>
 
-      {/* MISSION & VISION */}
-      <motion.section
-        variants={prefersReducedMotion ? undefined : containerVariants}
-        initial="hidden"
-        whileInView="visible"
-        viewport={{ once: true, amount: 0.2 }}
-        className="max-w-7xl mx-auto px-6 py-20"
-      >
-        <div className="grid md:grid-cols-2 gap-8">
-          <motion.div variants={itemVariants} className="bg-primary text-primary-content rounded-3xl p-10">
-            <h2 className="text-2xl md:text-3xl font-bold mb-5">Our Mission</h2>
-            <p className="leading-relaxed opacity-90">
-              To transform urban infrastructure management through transparency,
-              efficiency, and citizen engagement, making communities cleaner, safer, and
-              better connected.
-            </p>
-          </motion.div>
+      {/* Mission and vision */}
+      <section className="mx-auto max-w-7xl px-5 py-16 sm:px-6 sm:py-20 lg:px-8">
+        <div className="grid gap-6 lg:grid-cols-2">
+          <Reveal reducedMotion={reducedMotion}>
+            <article className="h-full rounded-3xl bg-primary p-7 text-primary-content sm:p-10">
+              <span className="text-sm font-semibold uppercase tracking-widest opacity-80">
+                Our mission
+              </span>
 
-          <motion.div variants={itemVariants} className="bg-base-200 rounded-3xl p-10">
-            <h2 className="text-2xl md:text-3xl font-bold mb-5 text-primary">Our Vision</h2>
-            <p className="leading-relaxed opacity-80">
-              A future where every urban issue is reported, tracked, and resolved
-              seamlessly through technology-driven collaboration between citizens and
-              local authorities.
-            </p>
-          </motion.div>
+              <h2 className="mt-4 text-2xl font-bold sm:text-3xl">
+                Make civic reporting more effective.
+              </h2>
+
+              <p className="mt-5 leading-8 opacity-90">
+                Our mission is to give communities a structured way to report
+                public infrastructure concerns, help teams manage them, and
+                make progress easier to follow.
+              </p>
+            </article>
+          </Reveal>
+
+          <Reveal reducedMotion={reducedMotion} delay={0.08}>
+            <article className="h-full rounded-3xl border border-base-300 bg-base-200/70 p-7 sm:p-10">
+              <span className="text-sm font-semibold uppercase tracking-widest text-primary">
+                Our vision
+              </span>
+
+              <h2 className="mt-4 text-2xl font-bold sm:text-3xl">
+                Stronger communities through collaboration.
+              </h2>
+
+              <p className="mt-5 leading-8 text-base-content/70">
+                We envision communities where citizens can raise concerns
+                confidently and responsible teams can coordinate infrastructure
+                improvements through accessible technology.
+              </p>
+            </article>
+          </Reveal>
         </div>
-      </motion.section>
+      </section>
 
-      {/* IMPACT */}
-      <motion.section
-        variants={prefersReducedMotion ? undefined : containerVariants}
-        initial="hidden"
-        whileInView="visible"
-        viewport={{ once: true, amount: 0.2 }}
-        className="max-w-7xl mx-auto px-6 pb-20"
-      >
-        <div className="grid md:grid-cols-2 gap-8">
-          <motion.div variants={itemVariants} className="bg-base-200 rounded-3xl p-8 text-center">
-            <Globe className="w-14 h-14 text-primary mx-auto mb-4" />
-            <h3 className="text-2xl md:text-3xl font-bold mb-3">Expanding Coverage</h3>
-            <p className="opacity-70">
-              Helping communities identify and resolve public infrastructure issues more
-              efficiently.
-            </p>
-          </motion.div>
+      {/* Impact highlights */}
+      <section className="mx-auto max-w-7xl px-5 pb-16 sm:px-6 sm:pb-20 lg:px-8">
+        <SectionHeading
+          eyebrow="Our approach"
+          title="Technology with a community purpose"
+          description="UrbanFix focuses on the practical steps that help communities communicate problems and organize responses."
+        />
 
-          <motion.div variants={itemVariants} className="bg-base-200 rounded-3xl p-8 text-center">
-            <Users className="w-14 h-14 text-primary mx-auto mb-4" />
-            <h3 className="text-2xl md:text-3xl font-bold mb-3">Growing Community</h3>
-            <p className="opacity-70">
-              Thousands of citizens participate in creating cleaner and safer urban
-              environments.
-            </p>
-          </motion.div>
+        <div className="grid gap-5 md:grid-cols-2">
+          {highlights.map((item, index) => {
+            const Icon = item.icon;
+
+            return (
+              <Reveal
+                key={item.title}
+                reducedMotion={reducedMotion}
+                delay={index * 0.08}
+              >
+                <article className="flex h-full gap-5 rounded-2xl border border-base-300 bg-base-100 p-6 shadow-sm sm:p-8">
+                  <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                    <Icon size={24} aria-hidden="true" />
+                  </div>
+
+                  <div>
+                    <h3 className="text-xl font-bold">{item.title}</h3>
+                    <p className="mt-3 leading-7 text-base-content/70">
+                      {item.description}
+                    </p>
+                  </div>
+                </article>
+              </Reveal>
+            );
+          })}
         </div>
-      </motion.section>
+      </section>
 
       {/* CTA */}
-      <motion.section
-        initial={{ opacity: 0, y: 24 }}
-        whileInView={{ opacity: 1, y: 0 }}
-        viewport={{ once: true, amount: 0.3 }}
-        transition={{ duration: 0.5 }}
-        className="px-6 pb-24"
-      >
-        <div className="max-w-5xl mx-auto bg-primary rounded-3xl p-10 md:p-12 text-center text-primary-content">
-          <h2 className="text-3xl sm:text-4xl md:text-5xl font-bold mb-5">Join The Movement</h2>
-          <p className="max-w-2xl mx-auto mb-8 opacity-90">
-            Be part of a smarter city. Report issues, track progress, and help improve
-            your community today.
-          </p>
+      <section className="px-5 pb-20 sm:px-6 sm:pb-24 lg:px-8">
+        <Reveal reducedMotion={reducedMotion}>
+          <div className="relative mx-auto max-w-6xl overflow-hidden rounded-3xl bg-primary px-6 py-12 text-center text-primary-content sm:px-12 sm:py-16">
+            <div
+              aria-hidden="true"
+              className="pointer-events-none absolute -right-16 -top-24 h-64 w-64 rounded-full border-[40px] border-primary-content/10"
+            />
 
-          <div className="flex flex-col sm:flex-row justify-center gap-4">
-            <Link
-              to="/create-issue"
-              className="btn btn-neutral rounded-full hover:scale-[1.03] active:scale-95 transition-transform"
-            >
-              Report an Issue
-            </Link>
+            <div
+              aria-hidden="true"
+              className="pointer-events-none absolute -bottom-24 -left-12 h-52 w-52 rounded-full border-[30px] border-primary-content/10"
+            />
 
-            <Link
-              to="/all-issues"
-              className="btn btn-outline border-primary-content text-primary-content rounded-full hover:bg-primary-content hover:text-primary hover:scale-[1.03] active:scale-95 transition-all"
-            >
-              Explore Issues
-              <ArrowRight className="w-4 h-4 ml-1" />
-            </Link>
+            <div className="relative z-10">
+              <h2 className="text-3xl font-extrabold tracking-tight sm:text-4xl md:text-5xl">
+                Help make your community better.
+              </h2>
+
+              <p className="mx-auto mt-5 max-w-2xl leading-7 opacity-90 sm:text-lg">
+                Every well-documented report can help bring attention to an
+                infrastructure problem. Start by reporting an issue or
+                exploring what your community has raised.
+              </p>
+
+              <div className="mt-8 flex flex-col justify-center gap-3 sm:flex-row">
+                <Link
+                  to="/create-issue"
+                  className="btn btn-neutral rounded-full px-7"
+                >
+                  Report an Issue
+                  <ArrowRight size={18} aria-hidden="true" />
+                </Link>
+
+                <Link
+                  to="/all-issues"
+                  className="btn btn-outline rounded-full border-primary-content px-7 text-primary-content hover:border-primary-content hover:bg-primary-content hover:text-primary"
+                >
+                  Browse All Issues
+                </Link>
+              </div>
+            </div>
           </div>
-        </div>
-      </motion.section>
-    </div>
+        </Reveal>
+      </section>
+    </main>
   );
 };
 

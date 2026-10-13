@@ -1,103 +1,146 @@
-import React, { useEffect, useState, useCallback } from "react";
-import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
+import React, { useCallback, useEffect, useState } from "react";
+import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
+import { HiMoon, HiSun } from "react-icons/hi";
 
 const THEME_KEY = "theme";
+const MANUAL_THEME_KEY = `${THEME_KEY}:manual`;
+const DARK_QUERY = "(prefers-color-scheme: dark)";
+
+const getSystemTheme = () => {
+  if (typeof window === "undefined") return "light";
+
+  return window.matchMedia(DARK_QUERY).matches ? "dark" : "light";
+};
 
 const getInitialTheme = () => {
   if (typeof window === "undefined") return "light";
-  const stored = localStorage.getItem(THEME_KEY);
-  if (stored) return stored;
-  return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+
+  try {
+    const savedTheme = localStorage.getItem(THEME_KEY);
+
+    if (savedTheme === "light" || savedTheme === "dark") {
+      return savedTheme;
+    }
+  } catch {
+    // Continue with the system preference if storage is unavailable.
+  }
+
+  return getSystemTheme();
 };
 
 const DarkModeToggle = () => {
   const [theme, setTheme] = useState(getInitialTheme);
   const prefersReducedMotion = useReducedMotion();
 
-  // Apply theme + persist
+  const isDark = theme === "dark";
+
+  // Apply the theme to DaisyUI and persist it when storage is available.
   useEffect(() => {
     document.documentElement.setAttribute("data-theme", theme);
-    localStorage.setItem(THEME_KEY, theme);
+    document.documentElement.style.colorScheme = theme;
+
+    try {
+      localStorage.setItem(THEME_KEY, theme);
+    } catch {
+      // The current theme still works even when persistence is unavailable.
+    }
   }, [theme]);
 
-  // Keep in sync with system changes, but only if the user hasn't picked manually
+  // Follow system changes only when the user has not manually selected a theme.
   useEffect(() => {
-    const mql = window.matchMedia("(prefers-color-scheme: dark)");
-    const handleSystemChange = (e) => {
-      const hasManualChoice = localStorage.getItem(THEME_KEY + ":manual") === "true";
-      if (!hasManualChoice) setTheme(e.matches ? "dark" : "light");
+    const mediaQuery = window.matchMedia(DARK_QUERY);
+
+    const handleSystemChange = (event) => {
+      try {
+        const hasManualChoice =
+          localStorage.getItem(MANUAL_THEME_KEY) === "true";
+
+        if (!hasManualChoice) {
+          setTheme(event.matches ? "dark" : "light");
+        }
+      } catch {
+        setTheme(event.matches ? "dark" : "light");
+      }
     };
-    mql.addEventListener("change", handleSystemChange);
-    return () => mql.removeEventListener("change", handleSystemChange);
+
+    mediaQuery.addEventListener("change", handleSystemChange);
+
+    return () => {
+      mediaQuery.removeEventListener("change", handleSystemChange);
+    };
   }, []);
 
-  // Keep multiple tabs in sync
+  // Synchronize theme changes made in other browser tabs.
   useEffect(() => {
-    const handleStorage = (e) => {
-      if (e.key === THEME_KEY && e.newValue) setTheme(e.newValue);
+    const handleStorage = (event) => {
+      if (event.key === THEME_KEY) {
+        if (event.newValue === "light" || event.newValue === "dark") {
+          setTheme(event.newValue);
+        } else if (event.newValue === null) {
+          setTheme(getSystemTheme());
+        }
+      }
+
+      if (event.key === MANUAL_THEME_KEY && event.newValue === null) {
+        setTheme(getSystemTheme());
+      }
     };
+
     window.addEventListener("storage", handleStorage);
-    return () => window.removeEventListener("storage", handleStorage);
+
+    return () => {
+      window.removeEventListener("storage", handleStorage);
+    };
   }, []);
 
   const toggleTheme = useCallback(() => {
-    localStorage.setItem(THEME_KEY + ":manual", "true"); // remembers this was an explicit choice
-    setTheme((prev) => (prev === "light" ? "dark" : "light"));
-  }, []);
+    try {
+      localStorage.setItem(MANUAL_THEME_KEY, "true");
+    } catch {
+      // Allow theme switching even if storage is unavailable.
+    }
 
-  const isDark = theme === "dark";
+    setTheme((currentTheme) =>
+      currentTheme === "dark" ? "light" : "dark"
+    );
+  }, []);
 
   return (
     <button
       type="button"
       onClick={toggleTheme}
-      aria-label="Toggle theme"
+      aria-label={`Switch to ${isDark ? "light" : "dark"} mode`}
       aria-pressed={isDark}
-      className="btn btn-sm btn-ghost btn-circle tooltip tooltip-bottom overflow-hidden"
-      data-tip={isDark ? "Light Mode" : "Dark Mode"}
+      title={`Switch to ${isDark ? "light" : "dark"} mode`}
+      className="btn btn-ghost btn-circle btn-sm shrink-0 text-base-content transition-colors duration-200 hover:bg-base-300 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
     >
       <AnimatePresence mode="wait" initial={false}>
-        {isDark ? (
-          <motion.svg
-            key="sun"
-            xmlns="http://www.w3.org/2000/svg"
-            className="h-5 w-5 text-yellow-400"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-            initial={prefersReducedMotion ? false : { rotate: -90, opacity: 0 }}
-            animate={{ rotate: 0, opacity: 1 }}
-            exit={prefersReducedMotion ? { opacity: 0 } : { rotate: 90, opacity: 0 }}
-            transition={{ duration: 0.25, ease: "easeOut" }}
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M12 3v1m0 16v1m8.66-9h-1M4.34 12h-1m15.36 5.36l-.7-.7M6.34 6.34l-.7-.7m12.02 12.02l-.7-.7M6.34 17.66l-.7-.7M12 5a7 7 0 100 14 7 7 0 000-14z"
-            />
-          </motion.svg>
-        ) : (
-          <motion.svg
-            key="moon"
-            xmlns="http://www.w3.org/2000/svg"
-            className="h-5 w-5 text-base-content/70"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-            initial={prefersReducedMotion ? false : { rotate: 90, opacity: 0 }}
-            animate={{ rotate: 0, opacity: 1 }}
-            exit={prefersReducedMotion ? { opacity: 0 } : { rotate: -90, opacity: 0 }}
-            transition={{ duration: 0.25, ease: "easeOut" }}
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M21 12.79A9 9 0 1111.21 3a7 7 0 009.79 9.79z"
-            />
-          </motion.svg>
-        )}
+        <motion.span
+          key={theme}
+          initial={
+            prefersReducedMotion
+              ? false
+              : { opacity: 0, rotate: isDark ? -45 : 45, scale: 0.8 }
+          }
+          animate={{ opacity: 1, rotate: 0, scale: 1 }}
+          exit={
+            prefersReducedMotion
+              ? { opacity: 0 }
+              : { opacity: 0, rotate: isDark ? 45 : -45, scale: 0.8 }
+          }
+          transition={{
+            duration: prefersReducedMotion ? 0 : 0.2,
+            ease: "easeOut",
+          }}
+          className="flex items-center justify-center"
+          aria-hidden="true"
+        >
+          {isDark ? (
+            <HiSun className="h-5 w-5 text-amber-400" />
+          ) : (
+            <HiMoon className="h-5 w-5 text-base-content" />
+          )}
+        </motion.span>
       </AnimatePresence>
     </button>
   );

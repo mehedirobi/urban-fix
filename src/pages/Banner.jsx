@@ -1,198 +1,350 @@
-import React, { useState, useEffect, useCallback, useRef } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
-import { HiChevronLeft, HiChevronRight } from "react-icons/hi";
+import {
+  HiChevronLeft,
+  HiChevronRight,
+  HiOutlinePause,
+  HiOutlinePlay,
+} from "react-icons/hi";
 
-const slides = [
+const SLIDES = [
   {
-    img: "https://images.unsplash.com/photo-1541888946425-d81bb19240f5?auto=format&fit=crop&w=2000&q=80",
+    img: "https://images.unsplash.com/photo-1541888946425-d81bb19240f5?auto=format&fit=crop&w=2000&q=85",
     title: "Report Urban Issues Instantly",
     desc: "Help improve your city by reporting infrastructure and community issues in seconds.",
+    alt: "Urban infrastructure and construction work",
   },
   {
-    img: "https://images.unsplash.com/photo-1504307651254-35680f356dfd?auto=format&fit=crop&w=2000&q=80",
+    img: "https://images.unsplash.com/photo-1504307651254-35680f356dfd?auto=format&fit=crop&w=2000&q=85",
     title: "Track Progress Transparently",
-    desc: "Stay informed with real-time updates from report submission to resolution.",
+    desc: "Stay informed with updates as community reports move from submission to resolution.",
+    alt: "Workers improving urban infrastructure",
   },
   {
-    img: "https://images.unsplash.com/photo-1517048676732-d65bc937f952?auto=format&fit=crop&w=2000&q=80",
+    img: "https://images.unsplash.com/photo-1517048676732-d65bc937f952?auto=format&fit=crop&w=2000&q=85",
     title: "Collaborate for Better Communities",
-    desc: "Citizens and authorities working together to create cleaner and safer neighborhoods.",
+    desc: "Bring citizens and authorities together to create cleaner, safer neighborhoods.",
+    alt: "People collaborating on a community project",
   },
   {
-    img: "https://images.unsplash.com/photo-1521791136064-7986c2920216?auto=format&fit=crop&w=2000&q=80",
+    img: "https://images.unsplash.com/photo-1521791136064-7986c2920216?auto=format&fit=crop&w=2000&q=85",
     title: "Building Smarter Cities Together",
-    desc: "Technology-driven solutions for efficient urban management and maintenance.",
+    desc: "Support better urban management through community participation and accountability.",
+    alt: "People working together on a project",
   },
 ];
 
-const AUTOPLAY_MS = 6000;
+const AUTOPLAY_DELAY = 6000;
+
+const slideVariants = {
+  enter: (direction) => ({
+    opacity: 0,
+    x: direction > 0 ? 36 : -36,
+  }),
+  center: {
+    opacity: 1,
+    x: 0,
+  },
+  exit: (direction) => ({
+    opacity: 0,
+    x: direction > 0 ? -36 : 36,
+  }),
+};
 
 const contentVariants = {
   hidden: {},
-  visible: { transition: { staggerChildren: 0.12, delayChildren: 0.1 } },
+  visible: {
+    transition: {
+      staggerChildren: 0.1,
+      delayChildren: 0.08,
+    },
+  },
 };
 
 const itemVariants = {
-  hidden: { opacity: 0, y: 24 },
-  visible: { opacity: 1, y: 0, transition: { duration: 0.5, ease: "easeOut" } },
-};
-
-const slideVariants = {
-  enter: (direction) => ({ opacity: 0, x: direction >= 0 ? 60 : -60 }),
-  center: { opacity: 1, x: 0 },
-  exit: (direction) => ({ opacity: 0, x: direction >= 0 ? -60 : 60 }),
+  hidden: {
+    opacity: 0,
+    y: 16,
+  },
+  visible: {
+    opacity: 1,
+    y: 0,
+    transition: {
+      duration: 0.45,
+      ease: "easeOut",
+    },
+  },
 };
 
 const Banner = () => {
-  const [[index, direction], setSlide] = useState([0, 0]);
-  const [paused, setPaused] = useState(false);
-  const prefersReducedMotion = useReducedMotion();
-  const timeoutRef = useRef(null);
-  const total = slides.length;
+  const [activeSlide, setActiveSlide] = useState(0);
+  const [direction, setDirection] = useState(1);
+  const [isPaused, setIsPaused] = useState(false);
+  const [isManuallyPaused, setIsManuallyPaused] = useState(false);
 
-  const goTo = useCallback((newIndex, dir) => {
-    setSlide([(newIndex + total) % total, dir]);
-  }, [total]);
+  const reducedMotion = useReducedMotion();
+  const touchStartX = useRef(null);
+  const totalSlides = SLIDES.length;
 
-  const next = useCallback(() => goTo(index + 1, 1), [goTo, index]);
-  const prev = useCallback(() => goTo(index - 1, -1), [goTo, index]);
+  const currentSlide = SLIDES[activeSlide];
 
-  // Autoplay
+  const goToSlide = useCallback(
+    (nextIndex) => {
+      const normalizedIndex =
+        (nextIndex + totalSlides) % totalSlides;
+
+      if (normalizedIndex === activeSlide) return;
+
+      setDirection(normalizedIndex > activeSlide ? 1 : -1);
+      setActiveSlide(normalizedIndex);
+    },
+    [activeSlide, totalSlides]
+  );
+
+  const goToNext = useCallback(() => {
+    goToSlide(activeSlide + 1);
+  }, [activeSlide, goToSlide]);
+
+  const goToPrevious = useCallback(() => {
+    goToSlide(activeSlide - 1);
+  }, [activeSlide, goToSlide]);
+
+  // Automatically advance slides unless paused or reduced motion is enabled.
   useEffect(() => {
-    if (paused || prefersReducedMotion) return;
-    timeoutRef.current = setTimeout(next, AUTOPLAY_MS);
-    return () => clearTimeout(timeoutRef.current);
-  }, [index, paused, prefersReducedMotion, next]);
+    if (isPaused || isManuallyPaused || reducedMotion) return undefined;
 
-  // Preload the next image so transitions don't flash
+    const timer = window.setTimeout(() => {
+      goToSlide(activeSlide + 1);
+    }, AUTOPLAY_DELAY);
+
+    return () => window.clearTimeout(timer);
+  }, [
+    activeSlide,
+    goToSlide,
+    isPaused,
+    isManuallyPaused,
+    reducedMotion,
+  ]);
+
+  // Preload the next image to reduce flicker during slide transitions.
   useEffect(() => {
-    const img = new Image();
-    img.src = slides[(index + 1) % total].img;
-  }, [index, total]);
+    const nextSlide = SLIDES[(activeSlide + 1) % totalSlides];
+    const image = new Image();
 
-  const slide = slides[index];
+    image.src = nextSlide.img;
+  }, [activeSlide, totalSlides]);
+
+  const handleKeyDown = (event) => {
+    if (event.key === "ArrowRight") {
+      event.preventDefault();
+      goToNext();
+    }
+
+    if (event.key === "ArrowLeft") {
+      event.preventDefault();
+      goToPrevious();
+    }
+  };
+
+  const handleBlurCapture = (event) => {
+    if (!event.currentTarget.contains(event.relatedTarget)) {
+      setIsPaused(false);
+    }
+  };
+
+  const handleTouchStart = (event) => {
+    touchStartX.current = event.touches[0]?.clientX ?? null;
+  };
+
+  const handleTouchEnd = (event) => {
+    if (touchStartX.current === null) return;
+
+    const endX = event.changedTouches[0]?.clientX ?? touchStartX.current;
+    const distance = endX - touchStartX.current;
+
+    if (Math.abs(distance) > 50) {
+      if (distance < 0) {
+        goToNext();
+      } else {
+        goToPrevious();
+      }
+    }
+
+    touchStartX.current = null;
+  };
 
   return (
-    <section
-      className="relative max-w-7xl mx-auto px-4 lg:px-0 mt-4"
-      onMouseEnter={() => setPaused(true)}
-      onMouseLeave={() => setPaused(false)}
-      onFocus={() => setPaused(true)}
-      onBlur={() => setPaused(false)}
-    >
+    <section className="mx-auto mt-4 w-full max-w-7xl px-4 sm:mt-6 lg:px-6">
       <div
-        className="relative overflow-hidden rounded-3xl shadow-2xl h-[360px] sm:h-[420px] md:h-[480px]"
+        className="relative isolate h-[420px] overflow-hidden rounded-2xl bg-slate-950 shadow-xl sm:h-[460px] sm:rounded-3xl md:h-[500px] lg:h-[520px]"
         role="region"
         aria-roledescription="carousel"
         aria-label="UrbanFix highlights"
+        tabIndex={0}
+        onKeyDown={handleKeyDown}
+        onMouseEnter={() => setIsPaused(true)}
+        onMouseLeave={() => setIsPaused(false)}
+        onFocusCapture={() => setIsPaused(true)}
+        onBlurCapture={handleBlurCapture}
+        onTouchStart={handleTouchStart}
+        onTouchEnd={handleTouchEnd}
       >
-        <AnimatePresence initial={false} custom={direction} mode="wait">
+        <AnimatePresence
+          initial={false}
+          custom={direction}
+          mode="sync"
+        >
           <motion.div
-            key={index}
+            key={activeSlide}
             custom={direction}
-            variants={slideVariants}
-            initial="enter"
+            variants={reducedMotion ? undefined : slideVariants}
+            initial={reducedMotion ? false : "enter"}
             animate="center"
-            exit="exit"
-            transition={{ duration: prefersReducedMotion ? 0 : 0.6, ease: [0.22, 1, 0.36, 1] }}
+            exit={reducedMotion ? undefined : "exit"}
+            transition={{
+              duration: reducedMotion ? 0 : 0.45,
+              ease: [0.22, 1, 0.36, 1],
+            }}
             className="absolute inset-0"
             role="group"
             aria-roledescription="slide"
-            aria-label={`${index + 1} of ${total}: ${slide.title}`}
+            aria-label={`${activeSlide + 1} of ${totalSlides}: ${currentSlide.title}`}
           >
             <motion.img
-              src={slide.img}
-              alt=""
-              loading={index === 0 ? "eager" : "lazy"}
-              fetchPriority={index === 0 ? "high" : "auto"}
-              initial={{ scale: 1 }}
-              animate={{ scale: prefersReducedMotion ? 1 : 1.08 }}
-              transition={{ duration: AUTOPLAY_MS / 1000 + 1, ease: "linear" }}
-              className="h-full w-full object-cover object-center"
+              src={currentSlide.img}
+              alt={currentSlide.alt}
+              loading={activeSlide === 0 ? "eager" : "lazy"}
+              fetchPriority={activeSlide === 0 ? "high" : "auto"}
+              draggable="false"
+              initial={false}
+              animate={{
+                scale: reducedMotion ? 1 : 1.06,
+              }}
+              transition={{
+                duration: reducedMotion ? 0 : AUTOPLAY_DELAY / 1000 + 1,
+                ease: "linear",
+              }}
+              className="h-full w-full select-none object-cover object-center"
             />
 
-            <div className="absolute inset-0 bg-gradient-to-r from-slate-950/90 via-slate-900/55 to-slate-900/10" />
-            <div className="absolute inset-0 bg-gradient-to-t from-slate-950/70 via-transparent to-transparent" />
+            {/* Image overlays for readable text */}
+            <div className="absolute inset-0 bg-gradient-to-r from-slate-950/90 via-slate-950/65 to-slate-950/20" />
+            <div className="absolute inset-0 bg-gradient-to-t from-slate-950/65 via-transparent to-slate-950/10" />
 
-            <div className="absolute inset-0 flex items-center">
+            {/* Slide content */}
+            <div className="absolute inset-0 flex items-center px-6 pb-12 pt-8 sm:px-12 md:px-16 lg:px-20">
               <motion.div
-                variants={contentVariants}
-                initial="hidden"
+                variants={reducedMotion ? undefined : contentVariants}
+                initial={reducedMotion ? false : "hidden"}
                 animate="visible"
-                className="max-w-3xl px-6 md:px-16 text-left text-white"
+                className="w-full max-w-3xl text-left text-white"
               >
                 <motion.div
-                  variants={itemVariants}
-                  className="inline-flex items-center gap-2 mb-4 px-4 py-1.5 rounded-full bg-white/10 backdrop-blur-md border border-white/20 text-xs sm:text-sm"
+                  variants={reducedMotion ? undefined : itemVariants}
+                  className="mb-4 inline-flex items-center gap-2 rounded-full border border-white/20 bg-white/10 px-3.5 py-1.5 text-xs font-medium tracking-wide text-white backdrop-blur-md sm:text-sm"
                 >
+                  <span
+                    className="h-2 w-2 rounded-full bg-primary"
+                    aria-hidden="true"
+                  />
                   Smart Urban Management
                 </motion.div>
 
                 <motion.h1
-                  variants={itemVariants}
-                  className="text-2xl sm:text-3xl md:text-5xl font-extrabold leading-tight mb-3"
+                  variants={reducedMotion ? undefined : itemVariants}
+                  className="mb-4 max-w-2xl text-3xl font-extrabold leading-tight tracking-tight sm:text-4xl md:text-5xl lg:text-6xl"
                 >
-                  {slide.title}
+                  {currentSlide.title}
                 </motion.h1>
 
                 <motion.p
-                  variants={itemVariants}
-                  className="text-sm sm:text-base md:text-lg text-gray-200 mb-5 max-w-xl"
+                  variants={reducedMotion ? undefined : itemVariants}
+                  className="mb-7 max-w-xl text-sm leading-6 text-white/85 sm:text-base sm:leading-7 md:text-lg"
                 >
-                  {slide.desc}
+                  {currentSlide.desc}
                 </motion.p>
 
-                <motion.div variants={itemVariants} className="flex flex-wrap gap-3 sm:gap-4 mb-6">
+                <motion.div
+                  variants={reducedMotion ? undefined : itemVariants}
+                  className="flex flex-wrap items-center gap-3"
+                >
                   <Link
                     to="/create-issue"
-                    className="btn btn-sm sm:btn-md btn-primary rounded-full px-6 sm:px-8 hover:scale-105 active:scale-95 transition-transform"
+                    className="btn btn-primary min-h-11 rounded-full px-6 text-sm font-semibold shadow-lg transition-transform duration-200 hover:-translate-y-0.5 hover:shadow-xl focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-white sm:px-7 sm:text-base"
                   >
-                    Report Issue
+                    Report an Issue
                   </Link>
+
                   <Link
                     to="/all-issues"
-                    className="btn btn-sm sm:btn-md rounded-full px-6 sm:px-8 border-2 border-white text-white bg-transparent hover:bg-white hover:text-black transition-colors"
+                    className="btn min-h-11 rounded-full border border-white/50 bg-white/10 px-6 text-sm font-semibold text-white backdrop-blur-sm transition-colors duration-200 hover:border-white hover:bg-white hover:text-slate-950 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-white sm:px-7 sm:text-base"
                   >
                     Explore Issues
                   </Link>
                 </motion.div>
-
               </motion.div>
             </div>
           </motion.div>
         </AnimatePresence>
 
+        {/* Previous and next controls */}
         <button
           type="button"
-          onClick={prev}
+          onClick={goToPrevious}
           aria-label="Previous slide"
-          className="hidden sm:flex absolute left-4 top-1/2 -translate-y-1/2 z-10 w-10 h-10 items-center justify-center rounded-full bg-white/10 border border-white/20 backdrop-blur-md text-white hover:bg-white/20 active:scale-95 transition"
+          className="absolute left-3 top-1/2 z-20 hidden h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full border border-white/20 bg-slate-950/30 text-white shadow-md backdrop-blur-md transition hover:bg-white/20 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white sm:flex md:left-5"
         >
-          <HiChevronLeft size={20} />
-        </button>
-        <button
-          type="button"
-          onClick={next}
-          aria-label="Next slide"
-          className="hidden sm:flex absolute right-4 top-1/2 -translate-y-1/2 z-10 w-10 h-10 items-center justify-center rounded-full bg-white/10 border border-white/20 backdrop-blur-md text-white hover:bg-white/20 active:scale-95 transition"
-        >
-          <HiChevronRight size={20} />
+          <HiChevronLeft size={25} aria-hidden="true" />
         </button>
 
-        <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-10 flex items-center gap-2">
-          {slides.map((s, i) => (
+        <button
+          type="button"
+          onClick={goToNext}
+          aria-label="Next slide"
+          className="absolute right-3 top-1/2 z-20 hidden h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full border border-white/20 bg-slate-950/30 text-white shadow-md backdrop-blur-md transition hover:bg-white/20 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white sm:flex md:right-5"
+        >
+          <HiChevronRight size={25} aria-hidden="true" />
+        </button>
+
+        {/* Slide indicators and autoplay control */}
+        <div className="absolute bottom-4 left-1/2 z-20 flex -translate-x-1/2 items-center gap-3 sm:bottom-5">
+          <div className="flex items-center gap-2 rounded-full border border-white/10 bg-slate-950/35 px-3 py-2 backdrop-blur-md">
+            {SLIDES.map((slide, index) => (
+              <button
+                key={slide.title}
+                type="button"
+                onClick={() => goToSlide(index)}
+                aria-label={`Go to slide ${index + 1}: ${slide.title}`}
+                aria-current={index === activeSlide ? "true" : undefined}
+                className={`h-2 rounded-full transition-all duration-300 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white ${
+                  index === activeSlide
+                    ? "w-7 bg-white"
+                    : "w-2 bg-white/50 hover:bg-white/80"
+                }`}
+              />
+            ))}
+          </div>
+
+          {!reducedMotion && (
             <button
-              key={s.title}
               type="button"
-              onClick={() => goTo(i, i > index ? 1 : -1)}
-              aria-label={`Go to slide ${i + 1}`}
-              aria-current={i === index}
-              className={`h-2 rounded-full transition-all duration-300 ${
-                i === index ? "w-8 bg-white" : "w-2 bg-white/40 hover:bg-white/70"
-              }`}
-            />
-          ))}
+              onClick={() => setIsManuallyPaused((previous) => !previous)}
+              aria-label={
+                isManuallyPaused
+                  ? "Resume automatic slide rotation"
+                  : "Pause automatic slide rotation"
+              }
+              aria-pressed={isManuallyPaused}
+              className="flex h-9 w-9 items-center justify-center rounded-full border border-white/20 bg-slate-950/35 text-white backdrop-blur-md transition hover:bg-white/20 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
+            >
+              {isManuallyPaused ? (
+                <HiOutlinePlay size={17} aria-hidden="true" />
+              ) : (
+                <HiOutlinePause size={17} aria-hidden="true" />
+              )}
+            </button>
+          )}
         </div>
       </div>
     </section>
