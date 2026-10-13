@@ -1,13 +1,10 @@
 import React, { useState, useCallback, memo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import axios from "axios";
 import UseAuth from "../hooks/UseAuth";
+import useAxiosSecure from "../hooks/useAxiosSecure";
 import { Link } from "react-router-dom";
 import Swal from "sweetalert2";
-
-const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || "https://urban-fix-server.vercel.app",
-});
+import { readCollection } from "../lib/api";
 
 const CATEGORIES = ["Road", "Garbage", "Water", "Streetlight", "Others"];
 
@@ -146,6 +143,7 @@ const EditIssueModal = memo(function EditIssueModal({
 
 const MyIssues = () => {
   const { user } = UseAuth();
+  const secureApi = useAxiosSecure();
   const queryClient = useQueryClient();
   const queryKey = ["my-issues", user?.email];
 
@@ -159,14 +157,14 @@ const MyIssues = () => {
     queryKey,
     enabled: !!user?.email,
     queryFn: async () => {
-      const res = await api.get(`/issues/my/${user.email}`);
-      return Array.isArray(res.data) ? res.data : [];
+      const res = await secureApi.get(`/issues/my/${encodeURIComponent(user.email)}`);
+      return readCollection(res.data);
     },
     staleTime: 30_000,
   });
 
   const deleteMutation = useMutation({
-    mutationFn: (id) => api.delete(`/issues/${id}`, { data: { userEmail: user.email } }),
+    mutationFn: (id) => secureApi.delete(`/issues/${id}`, { data: { userEmail: user.email } }),
     onMutate: async (id) => {
       await queryClient.cancelQueries({ queryKey });
       const previous = queryClient.getQueryData(queryKey);
@@ -178,12 +176,13 @@ const MyIssues = () => {
       Swal.fire("Error", getErrorMessage(err, "Failed to delete issue."), "error");
     },
     onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["issues"] });
       Swal.fire({ title: "Deleted", text: "Issue removed successfully.", icon: "success" });
     },
   });
 
   const editMutation = useMutation({
-    mutationFn: ({ _id, ...payload }) => api.put(`/issues/${_id}`, payload),
+    mutationFn: ({ _id, ...payload }) => secureApi.put(`/issues/${_id}`, payload),
     onMutate: async ({ _id, ...payload }) => {
       await queryClient.cancelQueries({ queryKey });
       const previous = queryClient.getQueryData(queryKey);

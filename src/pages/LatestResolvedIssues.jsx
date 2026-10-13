@@ -1,11 +1,9 @@
-import React, { useEffect, useMemo, useState, useCallback } from "react";
+import React, { useMemo } from "react";
 import { Link } from "react-router-dom";
 import { motion, useReducedMotion } from "framer-motion";
-import axios from "axios";
+import { useQuery } from "@tanstack/react-query";
+import { api, readIssueList } from "../lib/api";
 import { HiOutlineRefresh, HiOutlineInbox } from "react-icons/hi";
-
-const API_URL =
-  import.meta.env.VITE_API_URL || "https://urban-fix-server.vercel.app";
 
 // Inline SVG fallback — no external service, never goes down
 const NO_IMAGE_FALLBACK =
@@ -74,48 +72,38 @@ const cardVariants = {
 };
 
 const LatestResolvedIssues = () => {
-  const [issues, setIssues] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-  const [retryCount, setRetryCount] = useState(0);
   const prefersReducedMotion = useReducedMotion();
 
-  const fetchResolvedIssues = useCallback(async (signal) => {
-    try {
-      setLoading(true);
-      setError(null);
+  const {
+    data: allIssues = [],
+    isLoading: loading,
+    isError: error,
+    refetch,
+  } = useQuery({
+    queryKey: ["issues"],
+    queryFn: async () => {
+      const res = await api.get("/issues", { params: { limit: 200 } });
+      return readIssueList(res.data);
+    },
+    staleTime: 30_000,
+  });
 
-      const res = await axios.get(`${API_URL}/issues`, { signal });
-      const data = Array.isArray(res.data?.data)
-  ? res.data.data
-  : [];
-
-      const resolvedIssues = data
-        .filter((issue) => issue?.status === "Resolved")
+  const issues = useMemo(
+    () =>
+      allIssues
+        .filter((issue) => issue.status?.toLowerCase() === "resolved")
+        .sort(
+          (a, b) =>
+            new Date(b.updatedAt || b.createdAt) -
+            new Date(a.updatedAt || a.createdAt)
+        )
+        .slice(0, 6)
         .map((issue) => ({
           ...issue,
           image: issue.image || NO_IMAGE_FALLBACK,
-        }));
-
-      const sorted = resolvedIssues.sort(
-        (a, b) => new Date(b.updatedAt || b.createdAt) - new Date(a.updatedAt || a.createdAt)
-      );
-
-      setIssues(sorted.slice(0, 6));
-    } catch (err) {
-      if (axios.isCancel(err)) return;
-      console.error("Error fetching resolved issues:", err);
-      setError("Failed to load resolved issues.");
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    const controller = new AbortController();
-    fetchResolvedIssues(controller.signal);
-    return () => controller.abort();
-  }, [fetchResolvedIssues, retryCount]);
+        })),
+    [allIssues]
+  );
 
   const renderedCards = useMemo(() => {
     return issues.map((issue) => (
@@ -182,7 +170,7 @@ const LatestResolvedIssues = () => {
           <p className="text-error font-semibold">{error}</p>
           <button
             type="button"
-            onClick={() => setRetryCount((c) => c + 1)}
+            onClick={() => refetch()}
             className="btn btn-outline btn-sm gap-2"
           >
             <HiOutlineRefresh size={18} />

@@ -158,20 +158,6 @@ const Banner = () => {
                   </Link>
                 </motion.div>
 
-                <motion.div variants={itemVariants} className="hidden sm:flex flex-wrap gap-x-8 gap-y-3">
-                  <div>
-                    <h3 className="text-xl sm:text-2xl font-bold">10K+</h3>
-                    <p className="text-xs sm:text-sm text-gray-300">Issues Reported</p>
-                  </div>
-                  <div>
-                    <h3 className="text-xl sm:text-2xl font-bold">95%</h3>
-                    <p className="text-xs sm:text-sm text-gray-300">Resolution Rate</p>
-                  </div>
-                  <div>
-                    <h3 className="text-xl sm:text-2xl font-bold">50+</h3>
-                    <p className="text-xs sm:text-sm text-gray-300">Communities</p>
-                  </div>
-                </motion.div>
               </motion.div>
             </div>
           </motion.div>

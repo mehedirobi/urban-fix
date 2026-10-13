@@ -1,34 +1,28 @@
-import React, { useState, useEffect, memo } from "react";
+import React, { useState, memo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import UseAuth from "../hooks/UseAuth";
-import axios from "axios";
+import useAxiosSecure from "../hooks/useAxiosSecure";
 import Swal from "sweetalert2";
 import Loader from "../components/Loader";
 import { updateProfile } from "firebase/auth";
 import { auth } from "../firebase/firebase.init";
-
-const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || "https://urban-fix-server.vercel.app",
-});
+import { readRecord } from "../lib/api";
 
 const PLACEHOLDER_AVATAR = "https://via.placeholder.com/100";
 
 /* ---------------- Avatar Input ---------------- */
 
 const AvatarInput = memo(function AvatarInput({ photoURL, onChange }) {
-  const [imgSrc, setImgSrc] = useState(photoURL || PLACEHOLDER_AVATAR);
-
-  useEffect(() => {
-    setImgSrc(photoURL || PLACEHOLDER_AVATAR);
-  }, [photoURL]);
-
   return (
     <div className="flex items-center gap-4">
       <img
-        src={imgSrc}
+        src={photoURL || PLACEHOLDER_AVATAR}
         alt="Profile"
         className="w-24 h-24 rounded-full object-cover border"
-        onError={() => setImgSrc(PLACEHOLDER_AVATAR)}
+        onError={(event) => {
+          event.currentTarget.onerror = null;
+          event.currentTarget.src = PLACEHOLDER_AVATAR;
+        }}
       />
 
       <input
@@ -90,6 +84,7 @@ const ProfileForm = memo(function ProfileForm({ initialData, email, saving, onSu
 
 const UserProfile = () => {
   const { user, refreshUser } = UseAuth();
+  const secureApi = useAxiosSecure();
   const queryClient = useQueryClient();
   const email = user?.email?.toLowerCase();
   const queryKey = ["user-profile", email];
@@ -102,8 +97,8 @@ const UserProfile = () => {
     queryKey,
     enabled: !!email,
     queryFn: async () => {
-      const res = await api.get(`/users/${encodeURIComponent(email)}`);
-      const data = res.data || {};
+      const res = await secureApi.get(`/users/${encodeURIComponent(email)}`);
+      const data = readRecord(res.data, "user");
       return {
         name: data.name || "",
         photoURL: data.photoURL || "",
@@ -116,7 +111,7 @@ const UserProfile = () => {
 
   const updateMutation = useMutation({
     mutationFn: async ({ name, photoURL }) => {
-      await api.put(`/users/${encodeURIComponent(email)}`, { name, photoURL });
+      await secureApi.patch(`/users/${encodeURIComponent(email)}`, { name, photoURL });
 
       if (!auth.currentUser) throw new Error("User not authenticated");
       await updateProfile(auth.currentUser, { displayName: name, photoURL });

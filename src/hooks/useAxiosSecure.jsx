@@ -1,15 +1,13 @@
-import axios from "axios";
+import { secureApi } from "../lib/api";
+import { auth } from "../firebase/firebase.init";
 
-const axiosSecure = axios.create({
-  baseURL: "https://urban-fix-server.vercel.app",
-});
-
-axiosSecure.interceptors.request.use(
+secureApi.interceptors.request.use(
   async (config) => {
-    const token = localStorage.getItem("access-token");
-
-    if (token) {
+    if (auth.currentUser) {
+      const token = await auth.currentUser.getIdToken();
       config.headers.Authorization = `Bearer ${token}`;
+    } else {
+      delete config.headers.Authorization;
     }
 
     return config;
@@ -17,6 +15,6 @@ axiosSecure.interceptors.request.use(
   (error) => Promise.reject(error)
 );
 
-const useAxiosSecure = () => axiosSecure;
+const useAxiosSecure = () => secureApi;
 
 export default useAxiosSecure;

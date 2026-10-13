@@ -1,13 +1,23 @@
 import React, { useMemo, useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Swal from "sweetalert2";
+import UseAuth from "../hooks/UseAuth";
+import useAxiosSecure from "../hooks/useAxiosSecure";
+import { fetchAllIssues } from "../lib/api";
 
-const statusOptions = ["pending", "ongoing", "resolved", "rejected"];
-const priorityOptions = ["low", "medium", "high", "urgent"];
+const statusOptions = ["Pending", "In Progress", "Resolved", "Rejected"];
+
+const normalizedStatus = (status) => {
+  const value = status?.toLowerCase();
+  return value === "ongoing" || value === "in-progress" ? "in progress" : value;
+};
 
 const statusBadgeMap = {
   pending: "badge-warning",
   ongoing: "badge-info",
+  "in progress": "badge-info",
   resolved: "badge-success",
+  closed: "badge-error",
   rejected: "badge-error",
 };
 
@@ -17,80 +27,6 @@ const priorityBadgeMap = {
   high: "badge-warning",
   urgent: "badge-error",
 };
-
-// Demo data for presentation
-const initialIssues = [
-  {
-    _id: "1",
-    title: "Broken Streetlight in Mirpur",
-    category: "Streetlight",
-    location: "Mirpur 10, Dhaka",
-    status: "pending",
-    priority: "high",
-    upvotes: 12,
-    postedBy: {
-      name: "Rahim",
-      email: "rahim@gmail.com",
-    },
-    createdAt: "2025-12-20T10:00:00.000Z",
-  },
-  {
-    _id: "2",
-    title: "Garbage Overflow Near Market",
-    category: "Waste Management",
-    location: "Mohammadpur, Dhaka",
-    status: "ongoing",
-    priority: "urgent",
-    upvotes: 21,
-    postedBy: {
-      name: "Karim",
-      email: "karim@gmail.com",
-    },
-    createdAt: "2025-12-21T08:30:00.000Z",
-  },
-  {
-    _id: "3",
-    title: "Water Leakage on Main Road",
-    category: "Water Supply",
-    location: "Uttara Sector 7",
-    status: "resolved",
-    priority: "medium",
-    upvotes: 8,
-    postedBy: {
-      name: "Sadia",
-      email: "sadia@gmail.com",
-    },
-    createdAt: "2025-12-22T09:15:00.000Z",
-  },
-  {
-    _id: "4",
-    title: "Damaged Footpath Beside School",
-    category: "Road & Footpath",
-    location: "Dhanmondi 27, Dhaka",
-    status: "pending",
-    priority: "low",
-    upvotes: 5,
-    postedBy: {
-      name: "Nabil",
-      email: "nabil@gmail.com",
-    },
-    createdAt: "2025-12-23T11:45:00.000Z",
-  },
-  {
-    _id: "5",
-    title: "Drain Blockage Causing Waterlogging",
-    category: "Drainage",
-    location: "Badda, Dhaka",
-    status: "ongoing",
-    priority: "high",
-    upvotes: 17,
-    postedBy: {
-      name: "Farzana",
-      email: "farzana@gmail.com",
-    },
-    createdAt: "2025-12-24T06:20:00.000Z",
-  },
-];
 
 const formatDate = (date) => {
   if (!date) return "N/A";
@@ -102,9 +38,46 @@ const formatDate = (date) => {
 };
 
 const ManageIssues = () => {
-  const [issues, setIssues] = useState(initialIssues);
+  const { user } = UseAuth();
+  const axiosSecure = useAxiosSecure();
+  const queryClient = useQueryClient();
+  const queryKey = ["issues"];
   const [searchText, setSearchText] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
+
+  const {
+    data: issues = [],
+    isLoading,
+    isError,
+    refetch,
+  } = useQuery({
+    queryKey,
+    queryFn: () => fetchAllIssues(axiosSecure),
+  });
+
+  const updateMutation = useMutation({
+    mutationFn: ({ id, status }) =>
+      axiosSecure.patch(`/issues/${id}/status`, { status }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey }),
+    onError: (error) =>
+      Swal.fire(
+        "Update failed",
+        error.response?.data?.message || "Could not update the issue.",
+        "error"
+      ),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (id) =>
+      axiosSecure.delete(`/issues/${id}`, { data: { userEmail: user?.email } }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey }),
+    onError: (error) =>
+      Swal.fire(
+        "Delete failed",
+        error.response?.data?.message || "Could not delete the issue.",
+        "error"
+      ),
+  });
 
   const filteredIssues = useMemo(() => {
     const search = searchText.trim().toLowerCase();
@@ -112,13 +85,14 @@ const ManageIssues = () => {
     return issues.filter((issue) => {
       const matchesSearch =
         !search ||
-        issue.title.toLowerCase().includes(search) ||
-        issue.category.toLowerCase().includes(search) ||
-        issue.location.toLowerCase().includes(search) ||
+        issue.title?.toLowerCase().includes(search) ||
+        issue.category?.toLowerCase().includes(search) ||
+        issue.location?.toLowerCase().includes(search) ||
         issue.postedBy?.name?.toLowerCase().includes(search);
 
       const matchesStatus =
-        statusFilter === "all" || issue.status === statusFilter;
+        statusFilter === "all" ||
+        normalizedStatus(issue.status) === normalizedStatus(statusFilter);
 
       return matchesSearch && matchesStatus;
     });
@@ -127,42 +101,14 @@ const ManageIssues = () => {
   const stats = useMemo(() => {
     return {
       total: issues.length,
-      pending: issues.filter((item) => item.status === "pending").length,
-      ongoing: issues.filter((item) => item.status === "ongoing").length,
-      resolved: issues.filter((item) => item.status === "resolved").length,
-      urgent: issues.filter((item) => item.priority === "urgent").length,
+      pending: issues.filter((item) => normalizedStatus(item.status) === "pending").length,
+      ongoing: issues.filter((item) => normalizedStatus(item.status) === "in progress").length,
+      resolved: issues.filter((item) => normalizedStatus(item.status) === "resolved").length,
+      urgent: issues.filter((item) => item.priority?.toLowerCase() === "urgent").length,
     };
   }, [issues]);
 
-  const handleStatusChange = (id, newStatus) => {
-    setIssues((prev) =>
-      prev.map((issue) =>
-        issue._id === id ? { ...issue, status: newStatus } : issue
-      )
-    );
-
-    Swal.fire({
-      icon: "success",
-      title: "Issue status updated",
-      timer: 1200,
-      showConfirmButton: false,
-    });
-  };
-
-  const handlePriorityChange = (id, newPriority) => {
-    setIssues((prev) =>
-      prev.map((issue) =>
-        issue._id === id ? { ...issue, priority: newPriority } : issue
-      )
-    );
-
-    Swal.fire({
-      icon: "success",
-      title: "Issue priority updated",
-      timer: 1200,
-      showConfirmButton: false,
-    });
-  };
+  const handleStatusChange = (id, status) => updateMutation.mutate({ id, status });
 
   const handleDelete = async (id) => {
     const result = await Swal.fire({
@@ -177,15 +123,27 @@ const ManageIssues = () => {
 
     if (!result.isConfirmed) return;
 
-    setIssues((prev) => prev.filter((issue) => issue._id !== id));
-
-    Swal.fire({
-      icon: "success",
-      title: "Issue deleted successfully",
-      timer: 1200,
-      showConfirmButton: false,
-    });
+    deleteMutation.mutate(id);
   };
+
+  if (!["admin", "staff"].includes(user?.role)) {
+    return <p className="py-12 text-center text-error">Staff access is required.</p>;
+  }
+
+  if (isLoading) {
+    return <div className="py-12 text-center" role="status">Loading issues…</div>;
+  }
+
+  if (isError) {
+    return (
+      <div className="py-12 text-center">
+        <p className="text-error">Could not load issues from the service.</p>
+        <button type="button" onClick={() => refetch()} className="btn btn-outline btn-sm mt-3">
+          Try again
+        </button>
+      </div>
+    );
+  }
 
   return (
     <section className="space-y-6">
@@ -304,7 +262,7 @@ const ManageIssues = () => {
                   <td>
                     <span
                       className={`badge capitalize ${
-                        statusBadgeMap[issue.status] || "badge-neutral"
+                        statusBadgeMap[issue.status?.toLowerCase()] || "badge-neutral"
                       }`}
                     >
                       {issue.status}
@@ -314,7 +272,7 @@ const ManageIssues = () => {
                   <td>
                     <span
                       className={`badge capitalize ${
-                        priorityBadgeMap[issue.priority] || "badge-neutral"
+                        priorityBadgeMap[issue.priority?.toLowerCase()] || "badge-neutral"
                       }`}
                     >
                       {issue.priority}
@@ -328,7 +286,10 @@ const ManageIssues = () => {
                     <div className="flex flex-wrap items-center justify-center gap-2">
                       <select
                         className="select select-bordered select-sm w-28"
-                        value={issue.status}
+                        value={
+                          statusOptions.find((status) => status === issue.status) || "Pending"
+                        }
+                        disabled={updateMutation.isPending}
                         onChange={(e) =>
                           handleStatusChange(issue._id, e.target.value)
                         }
@@ -340,26 +301,15 @@ const ManageIssues = () => {
                         ))}
                       </select>
 
-                      <select
-                        className="select select-bordered select-sm w-28"
-                        value={issue.priority}
-                        onChange={(e) =>
-                          handlePriorityChange(issue._id, e.target.value)
-                        }
-                      >
-                        {priorityOptions.map((priority) => (
-                          <option key={priority} value={priority}>
-                            {priority}
-                          </option>
-                        ))}
-                      </select>
-
-                      <button
-                        onClick={() => handleDelete(issue._id)}
-                        className="btn btn-sm btn-error"
-                      >
-                        Delete
-                      </button>
+                      {user?.role === "admin" && (
+                        <button
+                          onClick={() => handleDelete(issue._id)}
+                          className="btn btn-sm btn-error"
+                          disabled={deleteMutation.isPending}
+                        >
+                          Delete
+                        </button>
+                      )}
                     </div>
                   </td>
                 </tr>

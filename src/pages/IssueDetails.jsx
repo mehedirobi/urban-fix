@@ -2,12 +2,12 @@ import React, { useEffect, useState, useCallback } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
 import { motion, useReducedMotion } from "framer-motion";
 import axios from "axios";
+import { api, readRecord } from "../lib/api";
 import UseAuth from "../hooks/UseAuth";
+import useAxiosSecure from "../hooks/useAxiosSecure";
 import { AiFillLike } from "react-icons/ai";
 import { HiOutlineArrowLeft, HiOutlineLink, HiOutlineRefresh } from "react-icons/hi";
 import Swal from "sweetalert2";
-
-const API_URL = import.meta.env.VITE_API_URL || "https://urban-fix-server.vercel.app";
 
 const NO_IMAGE_FALLBACK =
   "data:image/svg+xml;charset=UTF-8," +
@@ -30,8 +30,10 @@ const statusBadgeClass = (status) => {
     case "resolved":
       return "badge-success";
     case "in-progress":
+    case "in progress":
       return "badge-warning";
     case "closed":
+    case "rejected":
       return "badge-error";
     default:
       return "badge-primary";
@@ -69,6 +71,7 @@ const IssueDetails = () => {
   const { id } = useParams();
   const navigate = useNavigate();
   const { user } = UseAuth();
+  const secureApi = useAxiosSecure();
   const prefersReducedMotion = useReducedMotion();
 
   const [issue, setIssue] = useState(null);
@@ -82,8 +85,8 @@ const IssueDetails = () => {
         setLoading(true);
         setError(null);
 
-        const res = await axios.get(`${API_URL}/issues/${id}`, { signal });
-        const found = res.data;
+        const res = await api.get(`/issues/${id}`, { signal });
+        const found = readRecord(res.data, "issue");
 
         if (!found) {
           navigate("/all-issues");
@@ -139,7 +142,7 @@ const IssueDetails = () => {
     }));
 
     try {
-      const res = await axios.put(`${API_URL}/issues/${issue._id}/upvote`, {
+      const res = await secureApi.put(`/issues/${issue._id}/upvote`, {
         userEmail: user.email,
       });
       if (res?.data?._id) setIssue((prev) => ({ ...prev, ...res.data }));

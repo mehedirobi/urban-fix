@@ -13,39 +13,6 @@ const Home = () => {
       {/* Hero Banner */}
       <Banner />
 
-      {/* Stats Section */}
-      <section className="max-w-7xl mx-auto px-4 py-16">
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
-          <div className="bg-base-200 rounded-3xl p-6 text-center shadow-sm">
-            <h2 className="text-4xl font-bold text-primary">10K+</h2>
-            <p className="mt-2 text-base-content/70">
-              Issues Reported
-            </p>
-          </div>
-
-          <div className="bg-base-200 rounded-3xl p-6 text-center shadow-sm">
-            <h2 className="text-4xl font-bold text-success">95%</h2>
-            <p className="mt-2 text-base-content/70">
-              Resolution Rate
-            </p>
-          </div>
-
-          <div className="bg-base-200 rounded-3xl p-6 text-center shadow-sm">
-            <h2 className="text-4xl font-bold text-info">50+</h2>
-            <p className="mt-2 text-base-content/70">
-              Communities
-            </p>
-          </div>
-
-          <div className="bg-base-200 rounded-3xl p-6 text-center shadow-sm">
-            <h2 className="text-4xl font-bold text-warning">24/7</h2>
-            <p className="mt-2 text-base-content/70">
-              Monitoring
-            </p>
-          </div>
-        </div>
-      </section>
-
       {/* Latest Issues */}
       <section className="max-w-7xl mx-auto px-4 py-16">
         <LatestResolvedIssues />

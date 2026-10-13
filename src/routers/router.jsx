@@ -1,30 +1,28 @@
+import { lazy } from "react";
 import { createBrowserRouter } from "react-router-dom";
-import HomeLayout from "../layout/HomeLayout";
-import DashBoardLayout from "../layout/DashBoardLayout";
 import PrivateRoute from "./PrivateRoute";
 
-// Public pages
-import Home from "../pages/Home";
-import Login from "../pages/Login";
-import Register from "../pages/Register";
-import ErrorPage from "../pages/ErrorPage";
-import AboutUs from "../pages/AboutUs";
-import AllIssues from "../pages/AllIssues";
-import CreateIssue from "../pages/CreateIssue";
-import IssueDetails from "../pages/IssueDetails";
-import EditIssue from "../pages/EditIssue";
-import Contact from "../pages/Contact";
-import Support from "../pages/Support";
-
-// Dashboard pages
-import Overview from "../pages/Overview";
-import MyIssues from "../pages/MyIssues";
-import UserProfile from "../pages/UserProfile";
-import UserPayments from "../pages/UserPayments";
-import ManageUsers from "../pages/ManageUsers";
-import ManageIssues from "../pages/ManageIssues";
-import PaymentSuccess from "../pages/PaymentSuccess";
-import PaymentCancel from "../pages/PaymentCancel";
+const HomeLayout = lazy(() => import("../layout/HomeLayout"));
+const DashBoardLayout = lazy(() => import("../layout/DashBoardLayout"));
+const Home = lazy(() => import("../pages/Home"));
+const Login = lazy(() => import("../pages/Login"));
+const Register = lazy(() => import("../pages/Register"));
+const ErrorPage = lazy(() => import("../pages/ErrorPage"));
+const AboutUs = lazy(() => import("../pages/AboutUs"));
+const AllIssues = lazy(() => import("../pages/AllIssues"));
+const CreateIssue = lazy(() => import("../pages/CreateIssue"));
+const IssueDetails = lazy(() => import("../pages/IssueDetails"));
+const EditIssue = lazy(() => import("../pages/EditIssue"));
+const Contact = lazy(() => import("../pages/contact"));
+const Support = lazy(() => import("../pages/support"));
+const Overview = lazy(() => import("../pages/Overview"));
+const MyIssues = lazy(() => import("../pages/MyIssues"));
+const UserProfile = lazy(() => import("../pages/UserProfile"));
+const UserPayments = lazy(() => import("../pages/UserPayments"));
+const ManageUsers = lazy(() => import("../pages/ManageUsers"));
+const ManageIssues = lazy(() => import("../pages/ManageIssues"));
+const PaymentSuccess = lazy(() => import("../pages/PaymentSuccess"));
+const PaymentCancel = lazy(() => import("../pages/PaymentCancel"));
 
 export const router = createBrowserRouter([
   {

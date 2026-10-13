@@ -42,13 +42,13 @@ const DashboardOverview = () => {
 
   const userRole = (user?.role || "citizen").toLowerCase();
 
-  const { data: overview = {}, isLoading } = useQuery({
+  const { data: overview = {}, isLoading, isError, refetch } = useQuery({
     queryKey: ["dashboard-overview", user?.email, userRole],
     enabled: !!user?.email,
     queryFn: async () => {
-      const res = await axiosSecure.get(
-        `/dashboard-overview?email=${user.email}&role=${userRole}`
-      );
+      const res = await axiosSecure.get("/dashboard-overview", {
+        params: { email: user.email, role: userRole },
+      });
       return res.data;
     },
   });
@@ -59,6 +59,17 @@ const DashboardOverview = () => {
         {[...Array(4)].map((_, i) => (
           <div key={i} className="h-32 animate-pulse rounded-2xl bg-base-200" />
         ))}
+      </div>
+    );
+  }
+
+  if (isError) {
+    return (
+      <div className="py-12 text-center">
+        <p className="text-error">Could not load dashboard data.</p>
+        <button type="button" onClick={() => refetch()} className="btn btn-outline btn-sm mt-3">
+          Try again
+        </button>
       </div>
     );
   }

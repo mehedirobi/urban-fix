@@ -1,7 +1,9 @@
 import React, { useState, useCallback, memo } from "react";
 import { useForm } from "react-hook-form";
+import { sendPasswordResetEmail } from "firebase/auth";
 import { Link, useNavigate } from "react-router-dom";
 import UseAuth from "../hooks/UseAuth";
+import { auth } from "../firebase/firebase.init";
 import Swal from "sweetalert2";
 import SocialLogin from "./SocialLogin";
 
@@ -60,6 +62,8 @@ const Login = () => {
   const {
     register,
     handleSubmit,
+    getValues,
+    setError,
     formState: { errors },
   } = useForm({ mode: "onBlur" });
 
@@ -67,6 +71,29 @@ const Login = () => {
   const navigate = useNavigate();
 
   const [loading, setLoading] = useState(false);
+
+  const handlePasswordReset = async () => {
+    const email = getValues("email")?.trim();
+    if (!email || !/\S+@\S+\.\S+/.test(email)) {
+      setError("email", { type: "validate", message: "Enter a valid email address first." });
+      return;
+    }
+
+    try {
+      await sendPasswordResetEmail(auth, email);
+      Swal.fire({
+        icon: "success",
+        title: "Reset email sent",
+        text: "Check your inbox for instructions to reset your password.",
+      });
+    } catch (error) {
+      Swal.fire({
+        icon: "error",
+        title: "Could not send reset email",
+        text: error.message || "Please try again.",
+      });
+    }
+  };
 
   const handleLogin = useCallback(
     async (data) => {
@@ -98,16 +125,6 @@ const Login = () => {
     },
     [signInUser, navigate, loading]
   );
-
-  const handleDemoLogin = useCallback(() => {
-    Swal.fire({
-      icon: "info",
-      title: "Demo Mode",
-      text: "This is a UI-only demo login",
-      timer: 1500,
-      showConfirmButton: false,
-    });
-  }, []);
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-base-200 px-4">
@@ -145,9 +162,14 @@ const Login = () => {
           <PasswordField register={register} error={errors.password} disabled={loading} />
 
           <div className="flex justify-end">
-            <Link to="/forgot-password" className="text-sm text-primary hover:underline">
+            <button
+              type="button"
+              onClick={handlePasswordReset}
+              disabled={loading}
+              className="text-sm text-primary hover:underline"
+            >
               Forgot Password?
-            </Link>
+            </button>
           </div>
 
           <button className="btn btn-primary w-full" disabled={loading}>

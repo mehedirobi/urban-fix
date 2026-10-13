@@ -1,10 +1,8 @@
 import React, { useState } from "react";
 import Swal from "sweetalert2";
 import { motion, useReducedMotion } from "framer-motion";
-import axios from "axios";
-import { Mail, Phone, MapPin, Clock, Send, Loader2 } from "lucide-react";
+import { Mail, Phone, MapPin, Clock, Send } from "lucide-react";
 
-const API_URL = import.meta.env.VITE_API_URL || "https://urban-fix-server.vercel.app";
 const MESSAGE_MAX_LENGTH = 1000;
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -29,7 +27,6 @@ const itemVariants = {
 const Contact = () => {
   const [form, setForm] = useState({ name: "", email: "", message: "" });
   const [errors, setErrors] = useState({});
-  const [submitting, setSubmitting] = useState(false);
   const prefersReducedMotion = useReducedMotion();
 
   const handleChange = (e) => {
@@ -49,39 +46,23 @@ const Contact = () => {
     return next;
   };
 
-  const handleSubmit = async (e) => {
+  const handleSubmit = (e) => {
     e.preventDefault();
     const validationErrors = validate();
     setErrors(validationErrors);
     if (Object.keys(validationErrors).length > 0) return;
 
-    setSubmitting(true);
-    try {
-      await axios.post(`${API_URL}/contact`, {
-        name: form.name.trim(),
-        email: form.email.trim(),
-        message: form.message.trim(),
-      });
+    const subject = encodeURIComponent(`UrbanFix support request from ${form.name.trim()}`);
+    const body = encodeURIComponent(
+      `Name: ${form.name.trim()}\nEmail: ${form.email.trim()}\n\n${form.message.trim()}`
+    );
+    window.location.href = `mailto:support@urbanfix.com?subject=${subject}&body=${body}`;
 
-      Swal.fire({
-        icon: "success",
-        title: "Message sent!",
-        text: "We'll get back to you as soon as possible.",
-        timer: 2000,
-        showConfirmButton: false,
-      });
-
-      setForm({ name: "", email: "", message: "" });
-    } catch (err) {
-      console.error("Contact form submission failed:", err);
-      Swal.fire({
-        icon: "error",
-        title: "Couldn't send your message",
-        text: "Something went wrong on our end. Please try again shortly.",
-      });
-    } finally {
-      setSubmitting(false);
-    }
+    Swal.fire({
+      icon: "info",
+      title: "Email draft opened",
+      text: "Send the message from your email app to complete your request. If it didn't open, email support@urbanfix.com directly.",
+    });
   };
 
   return (
@@ -109,7 +90,7 @@ const Contact = () => {
           viewport={{ once: true, amount: 0.3 }}
           className="grid sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-16"
         >
-          {contactCards.map(({ icon: Icon, label, value, href }) => {
+          {contactCards.map(({ icon, label, value, href }) => {
             const CardTag = href ? "a" : "div";
             return (
               <motion.div key={label} variants={itemVariants}>
@@ -119,7 +100,10 @@ const Contact = () => {
                     href ? "hover:shadow-lg hover:-translate-y-1 cursor-pointer" : ""
                   }`}
                 >
-                  <Icon className="mx-auto text-primary mb-4" size={32} />
+                  {React.createElement(icon, {
+                    className: "mx-auto text-primary mb-4",
+                    size: 32,
+                  })}
                   <h3 className="font-bold text-lg mb-2">{label}</h3>
                   <p className="opacity-70 break-words">{value}</p>
                 </CardTag>
@@ -147,7 +131,6 @@ const Contact = () => {
                   placeholder="Your Name"
                   value={form.name}
                   onChange={handleChange}
-                  disabled={submitting}
                   aria-invalid={!!errors.name}
                   aria-describedby={errors.name ? "name-error" : undefined}
                   className={`input input-bordered w-full transition-colors ${
@@ -168,7 +151,6 @@ const Contact = () => {
                   placeholder="Your Email"
                   value={form.email}
                   onChange={handleChange}
-                  disabled={submitting}
                   aria-invalid={!!errors.email}
                   aria-describedby={errors.email ? "email-error" : undefined}
                   className={`input input-bordered w-full transition-colors ${
@@ -189,7 +171,6 @@ const Contact = () => {
                   placeholder="Write your message..."
                   value={form.message}
                   onChange={handleChange}
-                  disabled={submitting}
                   maxLength={MESSAGE_MAX_LENGTH}
                   aria-invalid={!!errors.message}
                   aria-describedby={errors.message ? "message-error" : "message-count"}
@@ -213,20 +194,10 @@ const Contact = () => {
 
               <button
                 type="submit"
-                disabled={submitting}
-                className="btn btn-primary w-full gap-2 disabled:opacity-70"
+                className="btn btn-primary w-full gap-2"
               >
-                {submitting ? (
-                  <>
-                    <Loader2 size={18} className="animate-spin" />
-                    Sending...
-                  </>
-                ) : (
-                  <>
-                    <Send size={18} />
-                    Send Message
-                  </>
-                )}
+                <Send size={18} />
+                Open Email Draft
               </button>
             </form>
           </motion.div>

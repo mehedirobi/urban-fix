@@ -34,20 +34,6 @@ const AuthProvider = ({ children }) => {
   // =========================
   const normalizeEmail = (email = "") => email.toLowerCase().trim();
 
-  // 🔑 Save Firebase ID token to localStorage so axiosSecure can attach it
-  const saveFirebaseToken = useCallback(async (firebaseUser) => {
-    if (!firebaseUser) return null;
-
-    try {
-      const token = await firebaseUser.getIdToken(true);
-      localStorage.setItem("access-token", token);
-      return token;
-    } catch (error) {
-      console.error("Failed to save Firebase token:", error);
-      return null;
-    }
-  }, []);
-
   const clearFirebaseToken = useCallback(() => {
     localStorage.removeItem("access-token");
   }, []);
@@ -121,15 +107,12 @@ const AuthProvider = ({ children }) => {
     async (firebaseUser) => {
       if (!firebaseUser?.email) return null;
 
-      // ✅ token localStorage-e save howa nishchit kora hocche
-      // je kono DB call (post/get) korar age
-      await saveFirebaseToken(firebaseUser);
-
-      await saveUserToDB(firebaseUser);
-      const dbUser = await getUserFromDB(firebaseUser.email);
-      return dbUser;
+      const savedUser = await saveUserToDB(firebaseUser);
+      return savedUser?.email
+        ? savedUser
+        : await getUserFromDB(firebaseUser.email);
     },
-    [saveFirebaseToken, saveUserToDB, getUserFromDB]
+    [saveUserToDB, getUserFromDB]
   );
 
   // =========================
@@ -158,7 +141,7 @@ const AuthProvider = ({ children }) => {
   // =========================
   // REGISTER
   // =========================
-  const registerUser = async (email, password, name, profileImgFile) => {
+  const registerUser = useCallback(async (email, password, name, profileImgFile) => {
     setLoading(true);
 
     try {
@@ -185,9 +168,6 @@ const AuthProvider = ({ children }) => {
 
       await auth.currentUser?.reload();
       const firebaseUser = auth.currentUser || result.user;
-
-      // ✅ token save (registration flow-e explicit call, safety-r jonno)
-      await saveFirebaseToken(firebaseUser);
 
       const dbUser = await syncAndGetDBUser({
         ...firebaseUser,
@@ -226,20 +206,17 @@ const AuthProvider = ({ children }) => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [syncAndGetDBUser, handleBlockedUser, buildAppUser]);
 
   // =========================
   // LOGIN
   // =========================
-  const signInUser = async (email, password) => {
+  const signInUser = useCallback(async (email, password) => {
     setLoading(true);
 
     try {
       const result = await signInWithEmailAndPassword(auth, email, password);
       const firebaseUser = result.user;
-
-      // ✅ token save
-      await saveFirebaseToken(firebaseUser);
 
       const dbUser = await syncAndGetDBUser(firebaseUser);
 
@@ -259,20 +236,17 @@ const AuthProvider = ({ children }) => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [syncAndGetDBUser, handleBlockedUser, buildAppUser]);
 
   // =========================
   // GOOGLE LOGIN
   // =========================
-  const signInGoogle = async () => {
+  const signInGoogle = useCallback(async () => {
     setLoading(true);
 
     try {
       const result = await signInWithPopup(auth, googleProvider);
       const firebaseUser = result.user;
-
-      // ✅ token save
-      await saveFirebaseToken(firebaseUser);
 
       const dbUser = await syncAndGetDBUser(firebaseUser);
 
@@ -292,12 +266,12 @@ const AuthProvider = ({ children }) => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [googleProvider, syncAndGetDBUser, handleBlockedUser, buildAppUser]);
 
   // =========================
   // LOGOUT function
   // =========================
-  const logout = async (showAlert = true) => {
+  const logout = useCallback(async (showAlert = true) => {
     setLoading(true);
 
     try {
@@ -318,22 +292,17 @@ const AuthProvider = ({ children }) => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [clearFirebaseToken]);
 
   
   // REFRESH USER
   
-  const refreshUser = async () => {
+  const refreshUser = useCallback(async () => {
     if (!auth.currentUser?.email) return null;
 
     try {
-      setLoading(true);
-
       await auth.currentUser.reload();
       const firebaseUser = auth.currentUser;
-
-      // ✅ token refresh + save
-      await saveFirebaseToken(firebaseUser);
 
       const dbUser = await getUserFromDB(firebaseUser.email);
 
@@ -346,10 +315,8 @@ const AuthProvider = ({ children }) => {
     } catch (error) {
       console.error("Refresh user failed:", error);
       return null;
-    } finally {
-      setLoading(false);
     }
-  };
+  }, [getUserFromDB, handleBlockedUser, buildAppUser]);
 
   
   // AUTH STATE LISTENER
@@ -362,9 +329,6 @@ const AuthProvider = ({ children }) => {
           setLoading(false);
           return;
         }
-
-        // ✅ token save — DB call korar AGE, sobar age
-        await saveFirebaseToken(currentUser);
 
         const dbUser = await syncAndGetDBUser(currentUser);
 
@@ -384,7 +348,7 @@ const AuthProvider = ({ children }) => {
     });
 
     return () => unsubscribe();
-  }, [saveFirebaseToken, clearFirebaseToken, syncAndGetDBUser, buildAppUser, handleBlockedUser]);
+  },   [clearFirebaseToken, syncAndGetDBUser, buildAppUser, handleBlockedUser]);
 
   const value = useMemo(
     () => ({
@@ -396,7 +360,7 @@ const AuthProvider = ({ children }) => {
       logout,
       refreshUser,
     }),
-    [user, loading]
+    [user, loading, registerUser, signInUser, signInGoogle, logout, refreshUser]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

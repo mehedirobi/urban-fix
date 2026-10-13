@@ -42,7 +42,7 @@ const PaymentCancel = () => {
         {/* Actions */}
         <div className="flex flex-col sm:flex-row gap-3">
           <Link
-            to="/payment"
+            to="/dashboard/my-payment"
             className="btn btn-error flex-1 rounded-xl"
           >
             Try Again

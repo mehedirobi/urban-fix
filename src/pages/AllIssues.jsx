@@ -1,13 +1,18 @@
-import React, { useEffect, useState, useMemo, useCallback, useRef } from "react";
+import React, { useEffect, useState, useMemo, useRef } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import useAuth from "../hooks/UseAuth";
 import useAxiosSecure from "../hooks/useAxiosSecure";
+import { api, fetchAllIssues } from "../lib/api";
 import { AiFillLike } from "react-icons/ai";
 import { HiOutlineRefresh, HiChevronLeft, HiChevronRight, HiOutlineSearch } from "react-icons/hi";
 
 const ITEMS_PER_PAGE = 8;
 const SEARCH_DEBOUNCE_MS = 250;
+
+const normalizeStatus = (value) =>
+  String(value || "").toLowerCase().replace(/[\s_-]+/g, "");
 
 const NO_IMAGE_FALLBACK =
   "data:image/svg+xml;charset=UTF-8," +
@@ -26,6 +31,19 @@ const priorityBadgeClass = (priority) => {
       return "badge-warning";
     default:
       return "badge-success";
+  }
+};
+
+const statusBadgeClass = (status) => {
+  switch (normalizeStatus(status)) {
+    case "resolved":
+      return "badge-success";
+    case "inprogress":
+      return "badge-warning";
+    case "rejected":
+      return "badge-error";
+    default:
+      return "badge-primary";
   }
 };
 
@@ -81,16 +99,12 @@ const cardVariants = {
 };
 
 const AllIssues = () => {
-  const { user, loading: authLoading } = useAuth();
+  const { user } = useAuth();
   const navigate = useNavigate();
-  const axiosSecure = useAxiosSecure();
+  const secureApi = useAxiosSecure();
+  const queryClient = useQueryClient();
   const prefersReducedMotion = useReducedMotion();
   const gridTopRef = useRef(null);
-
-  const [issues, setIssues] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [firstLoad, setFirstLoad] = useState(true);
-  const [fetchError, setFetchError] = useState(null);
 
   const [searchInput, setSearchInput] = useState("");
   const [search, setSearch] = useState("");
@@ -108,27 +122,16 @@ const AllIssues = () => {
     return () => clearTimeout(t);
   }, [searchInput]);
 
-  const fetchIssues = useCallback(async () => {
-    if (firstLoad) setLoading(true);
-    setFetchError(null);
-    try {
-      const res = await axiosSecure.get("/issues", { params: { limit: 200 } });
-      const list = Array.isArray(res.data?.data) ? res.data.data.filter((i) => i?._id) : [];
-      setIssues(list);
-    } catch (err) {
-      console.error("Issue Fetch Failed!", err);
-      setFetchError("Couldn't load issues. Check your connection and try again.");
-    } finally {
-      if (firstLoad) {
-        setLoading(false);
-        setFirstLoad(false);
-      }
-    }
-  }, [axiosSecure, firstLoad]);
-
-  useEffect(() => {
-    if (!authLoading) fetchIssues();
-  }, [authLoading, fetchIssues]);
+  const {
+    data: issues = [],
+    isLoading: loading,
+    isError: fetchError,
+    refetch: fetchIssues,
+  } = useQuery({
+    queryKey: ["issues"],
+    queryFn: () => fetchAllIssues(api),
+    staleTime: 30_000,
+  });
 
   const handleUpvote = async (issue) => {
     if (!user?.email) return navigate("/login");
@@ -138,8 +141,9 @@ const AllIssues = () => {
     if (alreadyUpvoted) return;
 
     // Optimistic update, with a snapshot to roll back to on failure
-    const previousIssues = issues;
-    setIssues((prev) =>
+    const queryKey = ["issues"];
+    const previousIssues = queryClient.getQueryData(queryKey);
+    queryClient.setQueryData(queryKey, (prev = []) =>
       prev.map((i) =>
         i._id === issue._id
           ? {
@@ -152,16 +156,18 @@ const AllIssues = () => {
     );
 
     try {
-      const res = await axiosSecure.put(`/issues/${issue._id}/upvote`, {
+      const res = await secureApi.put(`/issues/${issue._id}/upvote`, {
         userEmail: user.email,
       });
       const updatedIssue = res?.data;
       if (updatedIssue?._id) {
-        setIssues((prev) => prev.map((i) => (i._id === updatedIssue._id ? updatedIssue : i)));
+        queryClient.setQueryData(queryKey, (prev = []) =>
+          prev.map((item) => (item._id === updatedIssue._id ? updatedIssue : item))
+        );
       }
     } catch (err) {
       console.error("Upvote Failed:", err);
-      setIssues(previousIssues); // rollback instead of refetching 200 records
+      queryClient.setQueryData(queryKey, previousIssues);
     }
   };
 
@@ -177,7 +183,7 @@ const AllIssues = () => {
       );
     }
     if (category) data = data.filter((i) => i.category?.toLowerCase() === category.toLowerCase());
-    if (status) data = data.filter((i) => i.status?.toLowerCase() === status.toLowerCase());
+    if (status) data = data.filter((i) => normalizeStatus(i.status) === normalizeStatus(status));
     if (priority) data = data.filter((i) => i.priority?.toLowerCase() === priority.toLowerCase());
 
     data.sort((a, b) => {
@@ -189,13 +195,8 @@ const AllIssues = () => {
   }, [issues, search, category, status, priority]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / ITEMS_PER_PAGE));
-
-  // Clamp currentPage if filters shrink the result set below it
-  useEffect(() => {
-    if (currentPage > totalPages) setCurrentPage(totalPages);
-  }, [totalPages, currentPage]);
-
-  const indexOfLast = currentPage * ITEMS_PER_PAGE;
+  const activePage = Math.min(currentPage, totalPages);
+  const indexOfLast = activePage * ITEMS_PER_PAGE;
   const indexOfFirst = indexOfLast - ITEMS_PER_PAGE;
   const currentIssues = filtered.slice(indexOfFirst, indexOfLast);
 
@@ -215,7 +216,7 @@ const AllIssues = () => {
     gridTopRef.current?.scrollIntoView({ behavior: prefersReducedMotion ? "auto" : "smooth", block: "start" });
   };
 
-  if (authLoading || (loading && firstLoad)) {
+  if (loading) {
     return (
       <div className="max-w-7xl mx-auto px-6 py-10 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
         {Array.from({ length: ITEMS_PER_PAGE }).map((_, i) => (
@@ -228,8 +229,8 @@ const AllIssues = () => {
   if (fetchError) {
     return (
       <div className="max-w-7xl mx-auto px-6 py-16 flex flex-col items-center text-center gap-4">
-        <p className="text-error font-semibold">{fetchError}</p>
-        <button type="button" onClick={fetchIssues} className="btn btn-outline btn-sm gap-2">
+        <p className="text-error font-semibold">Couldn’t load issues. Check the API connection and try again.</p>
+        <button type="button" onClick={() => fetchIssues()} className="btn btn-outline btn-sm gap-2">
           <HiOutlineRefresh size={18} />
           Try again
         </button>
@@ -283,9 +284,9 @@ const AllIssues = () => {
           >
             <option value="">Status</option>
             <option>Pending</option>
-            <option>In-Progress</option>
+            <option>In Progress</option>
             <option>Resolved</option>
-            <option>Closed</option>
+            <option>Rejected</option>
           </select>
 
           <select
@@ -319,7 +320,7 @@ const AllIssues = () => {
       {/* Cards */}
       <AnimatePresence mode="wait">
         <motion.div
-          key={`${currentPage}-${search}-${category}-${status}-${priority}`}
+          key={`${activePage}-${search}-${category}-${status}-${priority}`}
           variants={prefersReducedMotion ? undefined : containerVariants}
           initial="hidden"
           animate="visible"
@@ -352,7 +353,7 @@ const AllIssues = () => {
                     <p className="text-sm text-base-content/60 truncate">{issue.location}</p>
                     <div className="flex gap-2 flex-wrap my-2">
                       <span className="badge badge-primary badge-outline">{issue.category}</span>
-                      <span className="badge badge-secondary">{issue.status}</span>
+                      <span className={`badge ${statusBadgeClass(issue.status)}`}>{issue.status}</span>
                       <span className={`badge ${priorityBadgeClass(issue.priority)}`}>
                         {issue.priority || "Normal"}
                       </span>
@@ -398,14 +399,14 @@ const AllIssues = () => {
         <div className="flex justify-center items-center mt-10 gap-1 flex-wrap">
           <button
             className="btn btn-sm btn-outline"
-            onClick={() => goToPage(Math.max(1, currentPage - 1))}
-            disabled={currentPage === 1}
+            onClick={() => goToPage(Math.max(1, activePage - 1))}
+            disabled={activePage === 1}
             aria-label="Previous page"
           >
             <HiChevronLeft size={16} />
           </button>
 
-          {buildPageWindow(currentPage, totalPages).map((p, i) =>
+          {buildPageWindow(activePage, totalPages).map((p, i) =>
             p === "…" ? (
               <span key={`dots-${i}`} className="px-2 text-base-content/40">
                 …
@@ -413,9 +414,9 @@ const AllIssues = () => {
             ) : (
               <button
                 key={p}
-                className={`btn btn-sm ${currentPage === p ? "btn-primary" : "btn-outline"}`}
+                className={`btn btn-sm ${activePage === p ? "btn-primary" : "btn-outline"}`}
                 onClick={() => goToPage(p)}
-                aria-current={currentPage === p ? "page" : undefined}
+                aria-current={activePage === p ? "page" : undefined}
               >
                 {p}
               </button>
@@ -424,8 +425,8 @@ const AllIssues = () => {
 
           <button
             className="btn btn-sm btn-outline"
-            onClick={() => goToPage(Math.min(totalPages, currentPage + 1))}
-            disabled={currentPage === totalPages}
+            onClick={() => goToPage(Math.min(totalPages, activePage + 1))}
+            disabled={activePage === totalPages}
             aria-label="Next page"
           >
             <HiChevronRight size={16} />

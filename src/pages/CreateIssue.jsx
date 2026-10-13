@@ -3,11 +3,10 @@ import { useNavigate } from "react-router-dom";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { motion, useReducedMotion } from "framer-motion";
 import { MapPin, Upload, User, AlertTriangle, X } from "lucide-react";
-import axios from "axios";
 import Swal from "sweetalert2";
 import useAuth from "../hooks/UseAuth";
+import useAxiosSecure from "../hooks/useAxiosSecure";
 
-const API_BASE = import.meta.env.VITE_API_URL || "https://urban-fix-server.vercel.app";
 const MAX_UPLOAD_MB = 8;
 const MAX_EDGE_PX = 1600;
 const DESCRIPTION_MAX = 1500;
@@ -53,6 +52,7 @@ const compressImage = (file) =>
 
 const CreateIssue = () => {
   const { user } = useAuth();
+  const secureApi = useAxiosSecure();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const prefersReducedMotion = useReducedMotion();
@@ -70,11 +70,12 @@ const CreateIssue = () => {
 
   const createIssueMutation = useMutation({
     mutationFn: async (newIssue) => {
-      const res = await axios.post(`${API_BASE}/issues`, newIssue);
+      const res = await secureApi.post("/issues", newIssue);
       return res.data;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["my-issues", user?.email] });
+      queryClient.invalidateQueries({ queryKey: ["issues"] });
       Swal.fire({
         icon: "success",
         title: "Issue Reported",

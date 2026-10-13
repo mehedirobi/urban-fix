@@ -100,11 +100,11 @@ const Support = () => {
           viewport={{ once: true, amount: 0.3 }}
           className="grid sm:grid-cols-2 md:grid-cols-3 gap-6 mb-16"
         >
-          {supportCards.map(({ icon: Icon, title, desc, href, to }) => {
+          {supportCards.map(({ icon, title, desc, href, to }) => {
             const content = (
               <>
                 <div className="text-primary flex justify-center mb-4">
-                  <Icon size={32} />
+                  {React.createElement(icon, { size: 32 })}
                 </div>
                 <h3 className="text-xl font-bold mb-2">{title}</h3>
                 <p className="opacity-70">{desc}</p>

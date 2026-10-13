@@ -1,10 +1,9 @@
 import React, { useEffect, useMemo, useState, memo } from "react";
-import { PDFDownloadLink } from "@react-pdf/renderer";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import UseAuth from "../hooks/UseAuth";
-import axios from "axios";
+import useAxiosSecure from "../hooks/useAxiosSecure";
 import Swal from "sweetalert2";
-import InvoicePDF from "../components/InvoicePDF";
+import { readCollection } from "../lib/api";
 import { Bar } from "react-chartjs-2";
 import {
   Chart as ChartJS,
@@ -17,10 +16,6 @@ import {
 } from "chart.js";
 
 ChartJS.register(CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend);
-
-const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || "https://urban-fix-server.vercel.app",
-});
 
 /* ---------------- Chart ---------------- */
 
@@ -45,6 +40,32 @@ const PaymentsChart = memo(function PaymentsChart({ data }) {
 /* ---------------- Row ---------------- */
 
 const PaymentRow = memo(function PaymentRow({ payment }) {
+  const [downloadingInvoice, setDownloadingInvoice] = useState(false);
+
+  const downloadInvoice = async () => {
+    setDownloadingInvoice(true);
+    try {
+      const [{ pdf }, { default: InvoicePDF }] = await Promise.all([
+        import("@react-pdf/renderer"),
+        import("../components/InvoicePDF"),
+      ]);
+      const blob = await pdf(<InvoicePDF payment={payment} />).toBlob();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `Invoice-${payment._id}.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch (error) {
+      console.error("Invoice download failed:", error);
+      await Swal.fire("Download failed", "Could not generate the invoice PDF.", "error");
+    } finally {
+      setDownloadingInvoice(false);
+    }
+  };
+
   return (
     <tr>
       <td>{new Date(payment.createdAt).toLocaleDateString()}</td>
@@ -54,12 +75,14 @@ const PaymentRow = memo(function PaymentRow({ payment }) {
         <span className="badge badge-success">{payment.status}</span>
       </td>
       <td>
-        <PDFDownloadLink
-          document={<InvoicePDF payment={payment} />}
-          fileName={`Invoice-${payment._id}.pdf`}
+        <button
+          type="button"
+          className="btn btn-link btn-sm"
+          onClick={downloadInvoice}
+          disabled={downloadingInvoice}
         >
-          {({ loading }) => (loading ? "Preparing..." : "Download")}
-        </PDFDownloadLink>
+          {downloadingInvoice ? "Preparing..." : "Download"}
+        </button>
       </td>
     </tr>
   );
@@ -69,6 +92,7 @@ const PaymentRow = memo(function PaymentRow({ payment }) {
 
 const UserPayments = () => {
   const { user } = UseAuth();
+  const secureApi = useAxiosSecure();
   const queryClient = useQueryClient();
   const email = user?.email;
   const queryKey = ["payments", email];
@@ -89,13 +113,13 @@ const UserPayments = () => {
     queryKey,
     enabled: !!email,
     queryFn: async () => {
-      const res = await api.get(`/payments/${email}`);
-      return Array.isArray(res.data) ? res.data : [];
+      const res = await secureApi.get(`/payments/${encodeURIComponent(email)}`);
+      return readCollection(res.data);
     },
   });
 
   const verifyMutation = useMutation({
-    mutationFn: () => api.post("/payments/verify", { sessionId, email }),
+    mutationFn: () => secureApi.post("/payments/verify", { sessionId, email }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey });
       // Strip session_id so a page refresh doesn't re-verify.
@@ -110,7 +134,7 @@ const UserPayments = () => {
   });
 
   const checkoutMutation = useMutation({
-    mutationFn: () => api.post("/create-checkout-session", { cost: 100, userEmail: email }),
+    mutationFn: () => secureApi.post("/create-checkout-session", { cost: 100, userEmail: email }),
     onSuccess: (res) => {
       if (res.data?.url) {
         window.location.href = res.data.url;

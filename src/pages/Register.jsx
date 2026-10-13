@@ -155,16 +155,6 @@ const Register = () => {
     [registerUser, navigate, errors.photo]
   );
 
-  const handleDemoLogin = useCallback(() => {
-    Swal.fire({
-      icon: "info",
-      title: "Demo Login",
-      text: "This feature is for testing only",
-      timer: 1500,
-      showConfirmButton: false,
-    });
-  }, []);
-
   return (
     <div className="min-h-screen flex items-center justify-center bg-base-200 px-4">
       <div className="w-full max-w-md bg-base-100 shadow-xl p-8 rounded-2xl">

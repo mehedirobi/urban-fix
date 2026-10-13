@@ -1,13 +1,14 @@
 import React, { useEffect, useState, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import axios from "axios";
 import Swal from "sweetalert2";
 import { motion } from "framer-motion";
 import { Upload, X, } from "lucide-react";
 import { HiOutlineArrowLeft } from "react-icons/hi";
+import { useQueryClient } from "@tanstack/react-query";
 import useAuth from "../hooks/UseAuth";
+import useAxiosSecure from "../hooks/useAxiosSecure";
+import { readRecord } from "../lib/api";
 
-const API_URL = import.meta.env.VITE_API_URL || "https://urban-fix-server.vercel.app";
 const MAX_UPLOAD_MB = 8;
 const MAX_EDGE_PX = 1600;
 
@@ -52,8 +53,10 @@ const EditSkeleton = () => (
 
 const EditIssue = () => {
   const { user, loading: authLoading } = useAuth();
+  const secureApi = useAxiosSecure();
   const { id } = useParams();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const fileInputRef = useRef(null);
 
   const [loading, setLoading] = useState(true);
@@ -72,8 +75,8 @@ const EditIssue = () => {
 
     const fetchIssue = async () => {
       try {
-        const res = await axios.get(`${API_URL}/issues/${id}`);
-        const issue = res.data;
+        const res = await secureApi.get(`/issues/${id}`);
+        const issue = readRecord(res.data, "issue");
 
         const ownerEmail =
           typeof issue.postedBy === "string" ? issue.postedBy : issue.postedBy?.email;
@@ -113,7 +116,7 @@ const EditIssue = () => {
     };
 
     fetchIssue();
-  }, [id, user, authLoading, navigate]);
+  }, [id, user, authLoading, navigate, secureApi]);
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -160,7 +163,11 @@ const EditIssue = () => {
     e.preventDefault();
     setSubmitting(true);
     try {
-      await axios.put(`${API_URL}/issues/${id}`, formData);
+      await secureApi.put(`/issues/${id}`, formData);
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["my-issues", user?.email] }),
+        queryClient.invalidateQueries({ queryKey: ["issues"] }),
+      ]);
       Swal.fire({
         icon: "success",
         title: "Updated Successfully",
