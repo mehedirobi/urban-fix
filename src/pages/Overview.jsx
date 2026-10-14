@@ -1,271 +1,534 @@
-import React from "react";
+import { memo } from "react";
 import { Link } from "react-router-dom";
+import { useQuery } from "@tanstack/react-query";
+import {
+  AlertCircle,
+  ArrowRight,
+  BarChart3,
+  CheckCircle2,
+  ClipboardList,
+  CreditCard,
+  RefreshCw,
+  ShieldCheck,
+  Users,
+} from "lucide-react";
 import useAuth from "../hooks/UseAuth";
 import useAxiosSecure from "../hooks/useAxiosSecure";
-import { useQuery } from "@tanstack/react-query";
 
-const StatCard = ({ title, value, subtitle, color = "primary" }) => {
+const STAT_STYLES = {
+  primary: "badge-primary",
+  secondary: "badge-secondary",
+  success: "badge-success",
+  warning: "badge-warning",
+  error: "badge-error",
+};
+
+const STAT_ICONS = {
+  primary: BarChart3,
+  secondary: ClipboardList,
+  success: CheckCircle2,
+  warning: AlertCircle,
+  error: ShieldCheck,
+};
+
+const formatValue = (value) => {
+  const number = Number(value);
+  return Number.isFinite(number) && number >= 0
+    ? number.toLocaleString()
+    : "0";
+};
+
+const StatCard = memo(function StatCard({
+  title,
+  value = 0,
+  subtitle,
+  color = "primary",
+}) {
+  const badgeClass = STAT_STYLES[color] || STAT_STYLES.primary;
+  const Icon = STAT_ICONS[color] || STAT_ICONS.primary;
+
   return (
-    <div className="rounded-2xl border border-base-300 bg-base-100 p-5 shadow-sm">
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <p className="text-sm font-medium text-base-content/70">{title}</p>
-          <h3 className="mt-2 text-3xl font-bold">{value}</h3>
+    <article className="group rounded-2xl border border-base-300 bg-base-100 p-5 shadow-sm transition-[border-color,box-shadow] duration-200 hover:border-primary/30 hover:shadow-md motion-reduce:transition-none sm:p-6">
+      <div className="flex items-start justify-between gap-4">
+        <div className="min-w-0">
+          <p className="text-sm font-medium text-base-content/65">
+            {title}
+          </p>
+
+          <p className="mt-3 text-3xl font-bold tracking-tight text-base-content">
+            {formatValue(value)}
+          </p>
+
           {subtitle && (
-            <p className="mt-2 text-xs text-base-content/60">{subtitle}</p>
+            <p className="mt-2 text-xs leading-5 text-base-content/55 sm:text-sm">
+              {subtitle}
+            </p>
           )}
         </div>
 
-        <div className={`badge badge-${color} badge-outline capitalize`}>
+        <span
+          className={`badge ${badgeClass} badge-outline shrink-0 capitalize`}
+        >
           {color}
-        </div>
+        </span>
       </div>
-    </div>
-  );
-};
 
-const QuickActionCard = ({ title, desc, to, btnText }) => {
+      <div className="mt-5 flex items-center gap-2 border-t border-base-300 pt-4">
+        <Icon
+          size={17}
+          className="text-primary"
+          aria-hidden="true"
+        />
+        <span className="text-xs text-base-content/55">
+          Dashboard statistics
+        </span>
+      </div>
+    </article>
+  );
+});
+
+const QuickActionCard = memo(function QuickActionCard({
+  title,
+  desc,
+  to,
+  btnText,
+}) {
   return (
-    <div className="rounded-2xl border border-base-300 bg-base-100 p-5 shadow-sm">
-      <h3 className="text-lg font-semibold">{title}</h3>
-      <p className="mt-2 text-sm text-base-content/70">{desc}</p>
-      <Link to={to} className="btn btn-primary btn-sm mt-4">
+    <article className="flex h-full flex-col rounded-2xl border border-base-300 bg-base-100 p-5 shadow-sm transition-[border-color,box-shadow] duration-200 hover:border-primary/30 hover:shadow-md motion-reduce:transition-none sm:p-6">
+      <h3 className="text-lg font-bold text-base-content">{title}</h3>
+
+      <p className="mt-2 flex-1 text-sm leading-6 text-base-content/65">
+        {desc}
+      </p>
+
+      <Link
+        to={to}
+        className="btn btn-primary btn-sm mt-5 w-fit gap-2"
+      >
         {btnText}
+        <ArrowRight size={16} aria-hidden="true" />
       </Link>
+    </article>
+  );
+});
+
+const StatGrid = memo(function StatGrid({ items, columns = "four" }) {
+  const gridClass =
+    columns === "three"
+      ? "grid gap-4 sm:grid-cols-2 xl:grid-cols-3"
+      : "grid gap-4 sm:grid-cols-2 xl:grid-cols-4";
+
+  return (
+    <div className={gridClass}>
+      {items.map((item) => (
+        <StatCard key={item.title} {...item} />
+      ))}
     </div>
   );
+});
+
+const QuickActions = memo(function QuickActions({ items }) {
+  return (
+    <div className="grid gap-4 lg:grid-cols-2">
+      {items.map((item) => (
+        <QuickActionCard key={item.title} {...item} />
+      ))}
+    </div>
+  );
+});
+
+const LoadingOverview = () => (
+  <div
+    className="space-y-6"
+    role="status"
+    aria-label="Loading dashboard"
+  >
+    <div className="h-36 animate-pulse rounded-3xl bg-base-200 sm:h-40" />
+
+    <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      {Array.from({ length: 4 }, (_, index) => (
+        <div
+          key={index}
+          className="h-40 animate-pulse rounded-2xl border border-base-300 bg-base-200/70"
+        />
+      ))}
+    </div>
+
+    <div className="grid gap-4 lg:grid-cols-2">
+      {Array.from({ length: 2 }, (_, index) => (
+        <div
+          key={index}
+          className="h-36 animate-pulse rounded-2xl bg-base-200"
+        />
+      ))}
+    </div>
+
+    <span className="sr-only">Loading your dashboard data...</span>
+  </div>
+);
+
+const DashboardMessage = ({ title, message, onRetry }) => (
+  <section className="mx-auto flex min-h-[40vh] max-w-xl flex-col items-center justify-center px-4 text-center">
+    <div className="flex size-14 items-center justify-center rounded-2xl bg-base-200 text-base-content/70">
+      <AlertCircle size={26} aria-hidden="true" />
+    </div>
+
+    <h2 className="mt-5 text-xl font-bold text-base-content">{title}</h2>
+
+    <p className="mt-2 max-w-md text-sm leading-6 text-base-content/65">
+      {message}
+    </p>
+
+    {onRetry && (
+      <button
+        type="button"
+        onClick={onRetry}
+        className="btn btn-primary btn-sm mt-5 gap-2"
+      >
+        <RefreshCw size={16} aria-hidden="true" />
+        Try again
+      </button>
+    )}
+  </section>
+);
+
+const DASHBOARD_CONTENT = {
+  citizen: {
+    stats: [
+      {
+        title: "My Total Issues",
+        key: "totalIssues",
+        subtitle: "Issues you have reported",
+        color: "primary",
+      },
+      {
+        title: "Pending Issues",
+        key: "pendingIssues",
+        subtitle: "Waiting for action",
+        color: "warning",
+      },
+      {
+        title: "Resolved Issues",
+        key: "resolvedIssues",
+        subtitle: "Issues marked as resolved",
+        color: "success",
+      },
+      {
+        title: "My Payments",
+        key: "totalPayments",
+        subtitle: "Recorded payment entries",
+        color: "secondary",
+      },
+    ],
+    actions: [
+      {
+        title: "View My Issues",
+        desc: "Review your submitted reports and their current statuses.",
+        to: "/dashboard/my-issues",
+        btnText: "Go to My Issues",
+      },
+      {
+        title: "Profile & Payments",
+        desc: "Update your account details or review your payment history.",
+        to: "/dashboard/profile",
+        btnText: "Open Profile",
+      },
+    ],
+  },
+
+  staff: {
+    stats: [
+      {
+        title: "Total Issues",
+        key: "totalIssues",
+        subtitle: "Reported issues across the platform",
+        color: "primary",
+      },
+      {
+        title: "Pending Issues",
+        key: "pendingIssues",
+        subtitle: "Awaiting review or action",
+        color: "warning",
+      },
+      {
+        title: "In Progress",
+        key: "inProgressIssues",
+        subtitle: "Currently being handled",
+        color: "secondary",
+      },
+      {
+        title: "Resolved Issues",
+        key: "resolvedIssues",
+        subtitle: "Issues marked as resolved",
+        color: "success",
+      },
+    ],
+    actions: [
+      {
+        title: "Manage Issues",
+        desc: "Review reports and update issue statuses according to your permissions.",
+        to: "/dashboard/manage-issues",
+        btnText: "Manage Issues",
+      },
+      {
+        title: "Profile Settings",
+        desc: "View and update your account information.",
+        to: "/dashboard/profile",
+        btnText: "Open Profile",
+      },
+    ],
+  },
+
+  admin: {
+    stats: [
+      {
+        title: "Total Users",
+        key: "totalUsers",
+        subtitle: "Registered platform users",
+        color: "primary",
+      },
+      {
+        title: "Total Issues",
+        key: "totalIssues",
+        subtitle: "All reported issues",
+        color: "secondary",
+      },
+      {
+        title: "Total Payments",
+        key: "totalPayments",
+        subtitle: "Recorded payment entries",
+        color: "success",
+      },
+      {
+        title: "Premium Users",
+        key: "totalPremiumUsers",
+        subtitle: "Users with premium access",
+        color: "warning",
+      },
+      {
+        title: "Pending Issues",
+        key: "pendingIssues",
+        subtitle: "Awaiting review or action",
+        color: "warning",
+      },
+      {
+        title: "In Progress",
+        key: "inProgressIssues",
+        subtitle: "Currently being handled",
+        color: "secondary",
+      },
+      {
+        title: "Resolved Issues",
+        key: "resolvedIssues",
+        subtitle: "Issues marked as resolved",
+        color: "success",
+      },
+    ],
+    actions: [
+      {
+        title: "Manage Users",
+        desc: "Review platform members and manage account permissions.",
+        to: "/dashboard/manage-users",
+        btnText: "Manage Users",
+      },
+      {
+        title: "Manage Issues",
+        desc: "Monitor reports and oversee issue resolution progress.",
+        to: "/dashboard/manage-issues",
+        btnText: "Manage Issues",
+      },
+    ],
+  },
 };
 
 const DashboardOverview = () => {
   const { user } = useAuth();
   const axiosSecure = useAxiosSecure();
 
-  const userRole = (user?.role || "citizen").toLowerCase();
+  const email = user?.email?.trim();
 
-  const { data: overview = {}, isLoading, isError, refetch } = useQuery({
-    queryKey: ["dashboard-overview", user?.email, userRole],
-    enabled: !!user?.email,
+  const rawRole = user?.role?.toLowerCase?.() || "citizen";
+  const userRole = rawRole === "user" ? "citizen" : rawRole;
+  const content = DASHBOARD_CONTENT[userRole];
+
+  const {
+    data: overview = {},
+    isLoading,
+    isError,
+    refetch,
+    isFetching,
+  } = useQuery({
+    queryKey: ["dashboard-overview", email, userRole],
+    enabled: Boolean(email),
+    staleTime: 30_000,
+    retry: 1,
     queryFn: async () => {
-      const res = await axiosSecure.get("/dashboard-overview", {
-        params: { email: user.email, role: userRole },
+      const response = await axiosSecure.get("/dashboard-overview", {
+        params: {
+          email,
+          role: userRole,
+        },
       });
-      return res.data;
+
+      const payload = response?.data;
+
+      if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+        throw new Error("Invalid dashboard response.");
+      }
+
+      return payload;
     },
   });
 
-  if (isLoading) {
+  if (!user) {
     return (
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        {[...Array(4)].map((_, i) => (
-          <div key={i} className="h-32 animate-pulse rounded-2xl bg-base-200" />
-        ))}
-      </div>
+      <DashboardMessage
+        title="Account not ready"
+        message="Your account information is not available yet. Wait for authentication to finish, then reopen the dashboard."
+      />
     );
+  }
+
+  if (!email) {
+    return (
+      <DashboardMessage
+        title="Email unavailable"
+        message="We couldn't identify your signed-in account. Sign in again if this issue continues."
+      />
+    );
+  }
+
+  if (isLoading) {
+    return <LoadingOverview />;
   }
 
   if (isError) {
     return (
-      <div className="py-12 text-center">
-        <p className="text-error">Could not load dashboard data.</p>
-        <button type="button" onClick={() => refetch()} className="btn btn-outline btn-sm mt-3">
-          Try again
-        </button>
-      </div>
+      <DashboardMessage
+        title="Unable to load dashboard"
+        message="The dashboard data could not be retrieved. Check your connection and try again."
+        onRetry={() => refetch()}
+      />
     );
   }
 
+  if (!content) {
+    return (
+      <DashboardMessage
+        title="Dashboard role unavailable"
+        message={`The account role "${userRole}" is not supported by this dashboard. Verify the role stored for your account.`}
+      />
+    );
+  }
+
+  const stats = content.stats.map((item) => ({
+    title: item.title,
+    subtitle: item.subtitle,
+    color: item.color,
+    value: overview[item.key] ?? 0,
+  }));
+
   return (
-    <div className="space-y-6">
-      {/* top hero */}
-      <section className="rounded-3xl border border-base-300 bg-gradient-to-r from-primary/10 via-base-100 to-secondary/10 p-6 shadow-sm">
-        <h2 className="text-2xl font-bold">
-          Welcome to UrbanFix Dashboard 👋
-        </h2>
-        <p className="mt-2 max-w-3xl text-sm text-base-content/70">
-          Track infrastructure issues, monitor progress, manage reports, and keep
-          city services more transparent and efficient.
-        </p>
+    <main className="space-y-6 pb-8">
+      <section className="relative overflow-hidden rounded-3xl border border-base-300 bg-gradient-to-br from-primary/10 via-base-100 to-secondary/10 p-5 shadow-sm sm:p-7 lg:p-8">
+        <div className="relative z-10">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="badge badge-primary badge-outline capitalize">
+              {userRole}
+            </span>
 
-        <div className="mt-4 flex flex-wrap gap-2">
-          <span className="badge badge-primary badge-outline capitalize">
-            {userRole}
-          </span>
+            {user?.isPremium && (
+              <span className="badge badge-success badge-outline">
+                Premium
+              </span>
+            )}
+          </div>
 
-          {user?.isPremium && (
-            <span className="badge badge-success badge-outline">Premium User</span>
-          )}
+          <h1 className="mt-4 text-2xl font-bold tracking-tight text-base-content sm:text-3xl">
+            Welcome to UrbanFix
+          </h1>
+
+          <p className="mt-3 max-w-2xl text-sm leading-7 text-base-content/65 sm:text-base">
+            Monitor civic reports, review issue progress, and access the tools
+            available to your account.
+          </p>
+
+          <p className="mt-3 break-all text-sm text-base-content/55">
+            Signed in as {email}
+          </p>
         </div>
+
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute -right-10 -top-12 hidden size-48 rounded-full bg-primary/10 blur-2xl sm:block"
+        />
       </section>
 
-      {/* citizen overview */}
-      {userRole === "citizen" && (
-        <>
-          <section>
-            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-              <StatCard
-                title="My Total Issues"
-                value={overview.totalIssues || 0}
-                subtitle="All issues you reported"
-                color="primary"
-              />
-              <StatCard
-                title="Pending Issues"
-                value={overview.pendingIssues || 0}
-                subtitle="Waiting for action"
-                color="warning"
-              />
-              <StatCard
-                title="Resolved Issues"
-                value={overview.resolvedIssues || 0}
-                subtitle="Completed successfully"
-                color="success"
-              />
-              <StatCard
-                title="My Payments"
-                value={overview.totalPayments || 0}
-                subtitle="Boost / subscription payments"
-                color="secondary"
-              />
-            </div>
-          </section>
+      <section aria-label="Dashboard statistics">
+        <div className="mb-4 flex items-center justify-between gap-3">
+          <h2 className="text-lg font-bold text-base-content sm:text-xl">
+            Overview
+          </h2>
 
-          <section className="grid gap-4 lg:grid-cols-2">
-            <QuickActionCard
-              title="View My Issues"
-              desc="See all your submitted issues, their current status, and update history."
-              to="/dashboard/my-issues"
-              btnText="Go to My Issues"
+          <button
+            type="button"
+            onClick={() => refetch()}
+            disabled={isFetching}
+            className="btn btn-ghost btn-sm gap-2"
+          >
+            <RefreshCw
+              size={15}
+              className={isFetching ? "animate-spin" : ""}
+              aria-hidden="true"
             />
-            <QuickActionCard
-              title="Manage Profile & Payments"
-              desc="Update your profile information or review your payment history."
-              to="/dashboard/profile"
-              btnText="Open Profile"
-            />
-          </section>
-        </>
-      )}
+            Refresh
+          </button>
+        </div>
 
-      {/* staff overview */}
-      {userRole === "staff" && (
-        <>
-          <section>
-            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-              <StatCard
-                title="Total Issues"
-                value={overview.totalIssues || 0}
-                subtitle="All reported issues in the system"
-                color="primary"
-              />
-              <StatCard
-                title="Pending"
-                value={overview.pendingIssues || 0}
-                subtitle="Need staff attention"
-                color="warning"
-              />
-              <StatCard
-                title="In Progress"
-                value={overview.inProgressIssues || 0}
-                subtitle="Currently being handled"
-                color="secondary"
-              />
-              <StatCard
-                title="Resolved"
-                value={overview.resolvedIssues || 0}
-                subtitle="Completed issues"
-                color="success"
-              />
-            </div>
-          </section>
+        <StatGrid
+          items={stats}
+          columns={userRole === "admin" ? "three" : "four"}
+        />
+      </section>
 
-          <section className="grid gap-4 lg:grid-cols-2">
-            <QuickActionCard
-              title="Manage Issues"
-              desc="Review reported issues, update statuses, and track resolution progress."
-              to="/dashboard/manage-issues"
-              btnText="Manage Issues"
-            />
-            <QuickActionCard
-              title="Profile Settings"
-              desc="Keep your staff account information updated for a clean presentation."
-              to="/dashboard/profile"
-              btnText="Open Profile"
-            />
-          </section>
-        </>
-      )}
+      <section aria-labelledby="quick-actions-heading">
+        <div className="mb-4 flex items-center gap-2">
+          <CreditCard
+            size={19}
+            className="text-primary"
+            aria-hidden="true"
+          />
+          <h2
+            id="quick-actions-heading"
+            className="text-lg font-bold text-base-content sm:text-xl"
+          >
+            Quick Actions
+          </h2>
+        </div>
 
-      {/* admin overview */}
+        <QuickActions items={content.actions} />
+      </section>
+
       {userRole === "admin" && (
-        <>
-          <section>
-            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-              <StatCard
-                title="Total Users"
-                value={overview.totalUsers || 0}
-                subtitle="All registered platform users"
-                color="primary"
-              />
-              <StatCard
-                title="Total Issues"
-                value={overview.totalIssues || 0}
-                subtitle="All reported issues"
-                color="secondary"
-              />
-              <StatCard
-                title="Total Payments"
-                value={overview.totalPayments || 0}
-                subtitle="Recorded payment entries"
-                color="success"
-              />
-              <StatCard
-                title="Premium Users"
-                value={overview.totalPremiumUsers || 0}
-                subtitle="Users with premium access"
-                color="warning"
-              />
-            </div>
-          </section>
-
-          <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-            <StatCard
-              title="Pending Issues"
-              value={overview.pendingIssues || 0}
-              subtitle="Need review / assignment"
-              color="warning"
-            />
-            <StatCard
-              title="In Progress"
-              value={overview.inProgressIssues || 0}
-              subtitle="Currently being processed"
-              color="secondary"
-            />
-            <StatCard
-              title="Resolved Issues"
-              value={overview.resolvedIssues || 0}
-              subtitle="Successfully resolved"
-              color="success"
-            />
-          </section>
-
-          <section className="grid gap-4 lg:grid-cols-2">
-            <QuickActionCard
-              title="Manage Users"
-              desc="Update roles, block users, and review platform members from one place."
-              to="/dashboard/manage-users"
-              btnText="Manage Users"
-            />
-            <QuickActionCard
-              title="Manage Issues"
-              desc="Monitor all reports, track progress, and keep issue resolution flowing."
-              to="/dashboard/manage-issues"
-              btnText="Manage Issues"
-            />
-          </section>
-        </>
+        <section className="flex items-start gap-3 rounded-2xl border border-base-300 bg-base-200/50 p-4">
+          <Users
+            size={20}
+            className="mt-0.5 shrink-0 text-primary"
+            aria-hidden="true"
+          />
+          <div>
+            <h2 className="font-semibold text-base-content">
+              Platform administration
+            </h2>
+            <p className="mt-1 text-sm leading-6 text-base-content/65">
+              Use the management pages to review users and reported issues.
+              Available actions depend on your server-side permissions.
+            </p>
+          </div>
+        </section>
       )}
-    </div>
+    </main>
   );
 };
 
-export default DashboardOverview;
+export default memo(DashboardOverview);

@@ -1,14 +1,19 @@
-import React, { memo, useCallback, useId, useMemo, useRef, useState } from "react";
+import React, {
+  memo,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
 import { Link, NavLink, Outlet, useLocation } from "react-router-dom";
 import {
   HiOutlineHome,
   HiOutlineClipboardList,
   HiOutlineUsers,
-  HiOutlineWrenchScrewdriver,
+  HiOutlineCog,
   HiOutlineCreditCard,
   HiOutlineUserCircle,
   HiOutlineMenuAlt3,
-  HiOutlineX,
   HiOutlineArrowLeft,
 } from "react-icons/hi";
 import { FaTools } from "react-icons/fa";
@@ -16,466 +21,411 @@ import { FaTools } from "react-icons/fa";
 import useAuth from "../hooks/UseAuth";
 import Loader from "../components/Loader";
 
-const SIDEBAR_LINKS = [
+const ROLE_LABELS = {
+  admin: "Administrator",
+  staff: "Staff",
+  citizen: "Citizen",
+  user: "Citizen",
+};
+
+const ROLE_STYLES = {
+  admin: "badge-error",
+  staff: "badge-warning",
+  citizen: "badge-success",
+  user: "badge-success",
+};
+
+const NAV_ITEMS = [
   {
-    to: "/dashboard",
     label: "Overview",
+    path: "/dashboard",
     icon: HiOutlineHome,
     roles: ["admin", "staff", "citizen"],
     end: true,
   },
   {
-    to: "/dashboard/my-issues",
     label: "My Issues",
+    path: "/dashboard/my-issues",
     icon: HiOutlineClipboardList,
     roles: ["citizen"],
   },
   {
-    to: "/dashboard/manage-users",
     label: "Manage Users",
+    path: "/dashboard/manage-users",
     icon: HiOutlineUsers,
     roles: ["admin"],
   },
   {
-    to: "/dashboard/manage-issues",
     label: "Manage Issues",
-    icon: HiOutlineWrenchScrewdriver,
+    path: "/dashboard/manage-issues",
+    icon: FaTools,
     roles: ["admin", "staff"],
   },
   {
-    to: "/dashboard/my-payment",
     label: "My Payments",
+    path: "/dashboard/my-payment",
     icon: HiOutlineCreditCard,
     roles: ["citizen"],
   },
   {
-    to: "/dashboard/profile",
     label: "My Profile",
+    path: "/dashboard/profile",
     icon: HiOutlineUserCircle,
     roles: ["admin", "staff", "citizen"],
   },
 ];
 
-const ROLE_BADGES = {
-  admin: "badge-error",
-  staff: "badge-warning",
-  citizen: "badge-info",
-};
-
 const PAGE_TITLES = {
-  "/dashboard": "Overview",
+  "/dashboard": "Dashboard Overview",
   "/dashboard/my-issues": "My Issues",
   "/dashboard/manage-users": "Manage Users",
   "/dashboard/manage-issues": "Manage Issues",
   "/dashboard/my-payment": "My Payments",
   "/dashboard/profile": "My Profile",
+  "/dashboard/payment-success": "Payment Successful",
+  "/dashboard/payment-cancel": "Payment Cancelled",
 };
 
-const getInitials = (name = "") => {
-  const parts = name.trim().split(/\s+/).filter(Boolean);
+const normalizeRole = (role) => {
+  const normalized = String(role || "citizen").trim().toLowerCase();
 
-  if (parts.length === 0) return "U";
+  return normalized === "user" ? "citizen" : normalized;
+};
 
-  return parts
+const getInitials = (name = "User") => {
+  const words = name.trim().split(/\s+/).filter(Boolean);
+
+  if (words.length === 0) return "U";
+
+  return words
     .slice(0, 2)
-    .map((part) => part.charAt(0))
+    .map((word) => word[0])
     .join("")
     .toUpperCase();
 };
 
-// --------------------------------------------------
-// USER AVATAR
-// --------------------------------------------------
-
-const UserAvatar = memo(function UserAvatar({
-  name,
-  photoURL,
-  size = "md",
-}) {
+const UserAvatar = memo(function UserAvatar({ user }) {
   const [imageFailed, setImageFailed] = useState(false);
 
-  const sizeClasses = {
-    sm: "h-9 w-9 text-xs",
-    md: "h-11 w-11 text-sm",
-    lg: "h-12 w-12 text-sm",
-  };
+  const photoURL = user?.photoURL || user?.photoUrl || user?.photo;
 
-  const dimensions = sizeClasses[size] || sizeClasses.md;
-  const showImage = Boolean(photoURL) && !imageFailed;
+  useEffect(() => {
+    setImageFailed(false);
+  }, [photoURL]);
+
+  if (photoURL && !imageFailed) {
+    return (
+      <div className="avatar shrink-0">
+        <div className="h-11 w-11 overflow-hidden rounded-full ring-2 ring-base-300">
+          <img
+            src={photoURL}
+            alt={user?.displayName || user?.name || "User profile"}
+            referrerPolicy="no-referrer"
+            onError={() => setImageFailed(true)}
+          />
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <div
-      className={`flex shrink-0 items-center justify-center overflow-hidden rounded-full bg-primary/10 font-bold text-primary ring-1 ring-base-300 ${dimensions}`}
-    >
-      {showImage ? (
-        <img
-          src={photoURL}
-          alt={`${name}'s profile`}
-          loading="lazy"
-          referrerPolicy="no-referrer"
-          onError={() => setImageFailed(true)}
-          className="h-full w-full object-cover"
-        />
-      ) : (
-        <span aria-label={`${name}'s initials`}>
-          {getInitials(name)}
+    <div className="avatar placeholder shrink-0">
+      <div className="flex h-11 w-11 items-center justify-center rounded-full bg-primary text-primary-content">
+        <span className="text-sm font-bold">
+          {getInitials(user?.displayName || user?.name)}
         </span>
-      )}
+      </div>
     </div>
   );
 });
 
-// --------------------------------------------------
-// SIDEBAR NAVIGATION
-// --------------------------------------------------
-
 const Sidebar = memo(function Sidebar({
-  links,
-  drawerId,
-  onNavigate,
   user,
-  userRole,
+  role,
+  navItems,
+  onNavigate,
 }) {
   const displayName =
     user?.displayName || user?.name || "UrbanFix User";
 
-  const email = user?.email || "";
+  const email = user?.email || "No email available";
 
   return (
-    <aside className="drawer-side z-50">
-      <label
-        htmlFor={drawerId}
-        aria-label="Close dashboard sidebar"
-        className="drawer-overlay"
-      />
-
-      <div className="flex min-h-full w-[min(18rem,85vw)] flex-col border-r border-base-300 bg-base-200 text-base-content">
-        {/* Brand */}
-        <div className="border-b border-base-300 px-5 py-5">
-          <Link
-            to="/"
-            onClick={onNavigate}
-            className="group flex items-center gap-3 rounded-xl outline-none focus-visible:ring-2 focus-visible:ring-primary"
-            aria-label="UrbanFix home"
-          >
-            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-primary text-primary-content shadow-sm transition-transform duration-200 group-hover:scale-105">
-              <FaTools className="text-lg" aria-hidden="true" />
-            </div>
-
-            <div className="min-w-0">
-              <h2 className="text-xl font-extrabold tracking-tight">
-                UrbanFix
-              </h2>
-              <p className="text-xs text-base-content/60">
-                Dashboard workspace
-              </p>
-            </div>
-          </Link>
-        </div>
-
-        {/* User information */}
-        <div className="px-4 pt-4">
-          <div className="rounded-2xl border border-base-300 bg-base-100 p-4 shadow-sm">
-            <div className="flex min-w-0 items-center gap-3">
-              <UserAvatar
-                name={displayName}
-                photoURL={user?.photoURL}
-                size="lg"
-              />
-
-              <div className="min-w-0 flex-1">
-                <h3 className="truncate text-sm font-bold">
-                  {displayName}
-                </h3>
-
-                <p
-                  className="mt-0.5 truncate text-xs text-base-content/60"
-                  title={email}
-                >
-                  {email || "No email available"}
-                </p>
-              </div>
-            </div>
-
-            <div className="mt-3 flex flex-wrap gap-2">
-              <span
-                className={`badge badge-sm capitalize ${
-                  ROLE_BADGES[userRole] || "badge-neutral"
-                }`}
-              >
-                {userRole}
-              </span>
-
-              {user?.isPremium && (
-                <span className="badge badge-success badge-sm">
-                  Premium
-                </span>
-              )}
-
-              {user?.isBlocked && (
-                <span className="badge badge-error badge-sm">
-                  Blocked
-                </span>
-              )}
-            </div>
-          </div>
-        </div>
-
-        {/* Navigation links */}
-        <nav
-          aria-label="Dashboard navigation"
-          className="flex-1 overflow-y-auto px-4 py-6"
+    <aside className="flex h-full min-h-0 flex-col bg-base-100">
+      {/* Brand */}
+      <div className="border-b border-base-200 px-5 py-5">
+        <Link
+          to="/"
+          onClick={onNavigate}
+          className="inline-flex items-center gap-3 rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-primary"
+          aria-label="UrbanFix home"
         >
-          <p className="mb-3 px-3 text-[11px] font-bold uppercase tracking-[0.16em] text-base-content/50">
-            Workspace
-          </p>
+          <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-primary text-primary-content">
+            <FaTools className="text-xl" />
+          </span>
 
-          <ul className="space-y-1.5">
-            {links.map(({ to, label, icon: Icon, end }) => (
-              <li key={to}>
-                <NavLink
-                  to={to}
-                  end={end}
-                  onClick={onNavigate}
-                  className={({ isActive }) =>
-                    [
-                      "group flex items-center gap-3 rounded-xl px-3.5 py-3 text-sm font-medium",
-                      "outline-none transition-colors duration-200",
-                      "focus-visible:ring-2 focus-visible:ring-primary",
-                      isActive
-                        ? "bg-primary text-primary-content shadow-sm"
-                        : "text-base-content/75 hover:bg-base-300 hover:text-base-content",
-                    ].join(" ")
-                  }
-                >
-                  {({ isActive }) => (
-                    <>
-                      <Icon
-                        className="h-5 w-5 shrink-0"
-                        aria-hidden="true"
-                      />
+          <span>
+            <span className="block text-xl font-extrabold tracking-tight">
+              UrbanFix
+            </span>
+            <span className="text-xs text-base-content/60">
+              Dashboard Portal
+            </span>
+          </span>
+        </Link>
+      </div>
 
-                      <span className="flex-1">{label}</span>
+      {/* User profile */}
+      <div className="border-b border-base-200 p-5">
+        <div className="flex min-w-0 items-center gap-3">
+          <UserAvatar user={user} />
 
-                      {isActive && (
-                        <span
-                          className="h-1.5 w-1.5 rounded-full bg-current"
-                          aria-hidden="true"
-                        />
-                      )}
-                    </>
-                  )}
-                </NavLink>
-              </li>
-            ))}
-          </ul>
-        </nav>
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-sm font-semibold">
+              {displayName}
+            </p>
 
-        {/* Sidebar footer */}
-        <div className="border-t border-base-300 p-4">
-          <div className="rounded-xl bg-base-100 p-3.5">
-            <div className="flex items-center gap-2">
-              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
-                <FaTools aria-hidden="true" />
-              </div>
+            <p className="truncate text-xs text-base-content/60">
+              {email}
+            </p>
 
-              <div className="min-w-0">
-                <p className="text-xs font-semibold">Better cities together</p>
-                <p className="mt-0.5 text-[11px] text-base-content/60">
-                  Powered by community action
-                </p>
-              </div>
-            </div>
+            <span
+              className={`badge mt-2 badge-sm ${
+                ROLE_STYLES[role] || "badge-ghost"
+              }`}
+            >
+              {ROLE_LABELS[role] || role}
+            </span>
           </div>
-
-          <Link
-            to="/"
-            onClick={onNavigate}
-            className="mt-3 flex items-center gap-2 rounded-lg px-3 py-2 text-xs font-medium text-base-content/60 transition hover:bg-base-300 hover:text-base-content focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-          >
-            <HiOutlineArrowLeft className="h-4 w-4" aria-hidden="true" />
-            Back to website
-          </Link>
         </div>
+      </div>
+
+      {/* Navigation */}
+      <nav
+        className="min-h-0 flex-1 overflow-y-auto p-3"
+        aria-label="Dashboard navigation"
+      >
+        <p className="px-3 pb-2 pt-2 text-xs font-bold uppercase tracking-wider text-base-content/45">
+          Workspace
+        </p>
+
+        <ul className="menu menu-md gap-1 p-0">
+          {navItems.map(({ label, path, icon: Icon, end }) => (
+            <li key={path}>
+              <NavLink
+                to={path}
+                end={end}
+                onClick={onNavigate}
+                className={({ isActive }) =>
+                  [
+                    "flex min-h-11 items-center gap-3 rounded-xl px-3 py-3 transition-colors",
+                    isActive
+                      ? "bg-primary font-semibold text-primary-content"
+                      : "text-base-content/75 hover:bg-base-200 hover:text-base-content",
+                  ].join(" ")
+                }
+              >
+                <Icon className="shrink-0 text-xl" />
+                <span>{label}</span>
+              </NavLink>
+            </li>
+          ))}
+        </ul>
+      </nav>
+
+      {/* Sidebar footer */}
+      <div className="border-t border-base-200 p-4">
+        <Link
+          to="/"
+          onClick={onNavigate}
+          className="btn btn-ghost btn-sm w-full justify-start gap-3 rounded-xl"
+        >
+          <HiOutlineArrowLeft className="text-lg" />
+          Back to Website
+        </Link>
       </div>
     </aside>
   );
 });
 
-// --------------------------------------------------
-// DASHBOARD LAYOUT
-// --------------------------------------------------
+function DashboardLoading() {
+  return (
+    <div className="flex min-h-screen items-center justify-center bg-base-200/50">
+      <Loader message="Loading your dashboard..." />
+    </div>
+  );
+}
 
-const DashBoardLayout = () => {
+function DashboardAccessError({ role }) {
+  return (
+    <main className="flex min-h-screen items-center justify-center bg-base-200/50 p-5">
+      <div className="w-full max-w-md rounded-2xl border border-base-300 bg-base-100 p-8 text-center shadow-sm">
+        <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-error/10 text-error">
+          <HiOutlineCog className="text-3xl" />
+        </div>
+
+        <h1 className="text-xl font-bold">
+          Dashboard Access Unavailable
+        </h1>
+
+        <p className="mt-3 text-sm leading-6 text-base-content/65">
+          This account does not have a supported dashboard role.
+          Please check your account role or contact the administrator.
+        </p>
+
+        <p className="mt-3 text-xs text-base-content/50">
+          Current role: {role || "Not assigned"}
+        </p>
+
+        <Link to="/" className="btn btn-primary mt-6">
+          Return Home
+        </Link>
+      </div>
+    </main>
+  );
+}
+
+export default function DashBoardLayout() {
   const { user, loading } = useAuth();
   const location = useLocation();
+  const [drawerOpen, setDrawerOpen] = useState(false);
 
-  const drawerId = useId();
-  const drawerRef = useRef(null);
+  const role = useMemo(
+    () => normalizeRole(user?.role),
+    [user?.role]
+  );
 
-  const userRole = (user?.role || "citizen").trim().toLowerCase();
-
-  const filteredLinks = useMemo(
-    () =>
-      SIDEBAR_LINKS.filter((link) =>
-        link.roles.includes(userRole)
-      ),
-    [userRole]
+  const navItems = useMemo(
+    () => NAV_ITEMS.filter((item) => item.roles.includes(role)),
+    [role]
   );
 
   const closeDrawer = useCallback(() => {
-    if (drawerRef.current) {
-      drawerRef.current.checked = false;
-    }
+    setDrawerOpen(false);
   }, []);
 
-  // Close the mobile drawer after navigating to another route.
-  React.useEffect(() => {
+  useEffect(() => {
     closeDrawer();
   }, [location.pathname, closeDrawer]);
 
-  const pageTitle =
-    PAGE_TITLES[location.pathname] ||
-    [...filteredLinks]
-      .filter(
-        (link) =>
-          link.to !== "/dashboard" &&
-          location.pathname.startsWith(`${link.to}/`)
-      )
-      .sort((a, b) => b.to.length - a.to.length)[0]?.label ||
-    "Dashboard";
+  const pageTitle = useMemo(() => {
+    const pathname = location.pathname;
 
-  const displayName =
-    user?.displayName || user?.name || "UrbanFix User";
+    if (PAGE_TITLES[pathname]) {
+      return PAGE_TITLES[pathname];
+    }
+
+    const matchedItem = [...NAV_ITEMS]
+      .filter((item) => item.path !== "/dashboard")
+      .sort((a, b) => b.path.length - a.path.length)
+      .find((item) => pathname.startsWith(`${item.path}/`) ||
+        pathname === item.path);
+
+    if (matchedItem) {
+      return matchedItem.label;
+    }
+
+    if (pathname.startsWith("/dashboard")) {
+      return "Dashboard";
+    }
+
+    return "UrbanFix";
+  }, [location.pathname]);
 
   if (loading) {
-    return <Loader message="Loading your dashboard..." />;
+    return <DashboardLoading />;
   }
 
   if (!user) {
-    // Let the application's route guard handle unauthenticated redirects.
+    // PrivateRoute should handle redirecting unauthenticated users.
     return null;
   }
 
-  if (user.isBlocked) {
-    return (
-      <main className="flex min-h-dvh items-center justify-center bg-base-100 px-4 py-10">
-        <section
-          role="alert"
-          className="w-full max-w-md rounded-3xl border border-error/20 bg-base-100 p-6 text-center shadow-xl sm:p-9"
-        >
-          <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-error/10 text-2xl font-bold text-error">
-            !
-          </div>
+  const supportedRoles = ["admin", "staff", "citizen"];
 
-          <h1 className="mt-5 text-2xl font-extrabold">
-            Account Blocked
-          </h1>
-
-          <p className="mt-3 text-sm leading-6 text-base-content/70">
-            Your account has been blocked by an administrator. Please
-            contact support if you believe this is a mistake.
-          </p>
-
-          <Link
-            to="/"
-            className="btn btn-primary mt-6 rounded-xl px-6"
-          >
-            Back to Home
-          </Link>
-        </section>
-      </main>
-    );
+  if (!supportedRoles.includes(role)) {
+    return <DashboardAccessError role={role} />;
   }
 
   return (
-    <div className="drawer min-h-dvh bg-base-100 lg:drawer-open">
+    <div className="drawer lg:drawer-open min-h-screen bg-base-200/50">
       <input
-        ref={drawerRef}
-        id={drawerId}
+        id="urbanfix-dashboard-drawer"
         type="checkbox"
         className="drawer-toggle"
-        aria-label="Toggle dashboard navigation"
+        checked={drawerOpen}
+        onChange={(event) => setDrawerOpen(event.target.checked)}
+        aria-label="Toggle dashboard sidebar"
       />
 
-      {/* Main content */}
-      <div className="drawer-content flex min-h-dvh min-w-0 flex-col">
-        {/* Top navigation */}
-        <header className="sticky top-0 z-30 border-b border-base-300 bg-base-100/90 backdrop-blur-xl">
-          <div className="navbar min-h-[4.5rem] gap-2 px-3 sm:px-5 lg:px-8">
-            {/* Mobile sidebar control */}
-            <div className="flex-none lg:hidden">
+      <div className="drawer-content flex min-h-screen min-w-0 flex-col">
+        {/* Top navbar */}
+        <header className="sticky top-0 z-30 border-b border-base-300 bg-base-100/95 backdrop-blur">
+          <div className="flex min-h-[72px] items-center justify-between gap-4 px-4 sm:px-6 lg:px-8">
+            <div className="flex min-w-0 items-center gap-3">
               <label
-                htmlFor={drawerId}
-                className="btn btn-square btn-ghost btn-sm sm:btn-md"
-                aria-label="Open dashboard sidebar"
+                htmlFor="urbanfix-dashboard-drawer"
+                className="btn btn-square btn-ghost drawer-button lg:hidden"
+                aria-label="Open sidebar"
               >
-                <HiOutlineMenuAlt3
-                  className="h-6 w-6"
-                  aria-hidden="true"
-                />
+                <HiOutlineMenuAlt3 className="text-2xl" />
               </label>
+
+              <div className="min-w-0">
+                <h1 className="truncate text-lg font-bold sm:text-xl">
+                  {pageTitle}
+                </h1>
+
+                <p className="hidden text-xs text-base-content/55 sm:block">
+                  Manage your UrbanFix workspace
+                </p>
+              </div>
             </div>
 
-            {/* Page heading */}
-            <div className="min-w-0 flex-1">
-              <h1 className="truncate text-lg font-extrabold tracking-tight sm:text-xl lg:text-2xl">
-                {pageTitle}
-              </h1>
-
-              <p className="mt-0.5 truncate text-xs text-base-content/60 sm:text-sm">
-                Welcome back, {displayName}
-              </p>
-            </div>
-
-            {/* Desktop profile summary */}
-            <div className="flex flex-none items-center gap-2.5 sm:gap-3">
+            <div className="flex shrink-0 items-center gap-3">
               <div className="hidden text-right sm:block">
                 <p className="max-w-40 truncate text-sm font-semibold">
-                  {displayName}
+                  {user.displayName || user.name || "User"}
                 </p>
-
-                <p className="text-xs capitalize text-base-content/60">
-                  {userRole}
+                <p className="text-xs capitalize text-base-content/55">
+                  {ROLE_LABELS[role] || role}
                 </p>
               </div>
 
-              <UserAvatar
-                name={displayName}
-                photoURL={user.photoURL}
-                size="md"
-              />
+              <UserAvatar user={user} />
             </div>
           </div>
         </header>
 
-        {/* Routed dashboard page */}
-        <main className="w-full flex-1 px-3 py-5 sm:px-5 sm:py-6 lg:px-8 lg:py-8">
-          <div className="mx-auto w-full max-w-7xl">
+        {/* Nested dashboard route content */}
+        <main className="w-full flex-1 p-4 sm:p-6 lg:p-8">
+          <div className="mx-auto w-full max-w-[1600px]">
             <Outlet />
           </div>
         </main>
 
-        {/* Minimal footer */}
-        <footer className="border-t border-base-300 px-4 py-4 text-center text-xs text-base-content/50 sm:px-6">
-          UrbanFix Dashboard
-          <span className="mx-2" aria-hidden="true">
-            ·
-          </span>
-          Making communities better together
+        <footer className="border-t border-base-300 bg-base-100 px-4 py-4 text-center text-xs text-base-content/50 sm:text-sm">
+          © {new Date().getFullYear()} UrbanFix. All rights reserved.
         </footer>
       </div>
 
-      {/* Responsive sidebar */}
-      <Sidebar
-        links={filteredLinks}
-        drawerId={drawerId}
-        onNavigate={closeDrawer}
-        user={user}
-        userRole={userRole}
-      />
+      {/* Sidebar / mobile drawer */}
+      <div className="drawer-side z-40">
+        <label
+          htmlFor="urbanfix-dashboard-drawer"
+          aria-label="Close sidebar"
+          className="drawer-overlay"
+        />
+
+        <div className="h-full w-[280px] max-w-[85vw] border-r border-base-300 bg-base-100 sm:w-[300px]">
+          <Sidebar
+            user={user}
+            role={role}
+            navItems={navItems}
+            onNavigate={closeDrawer}
+          />
+        </div>
+      </div>
     </div>
   );
-};
-
-export default DashBoardLayout;
+}
