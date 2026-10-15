@@ -17,6 +17,7 @@ import Swal from "sweetalert2";
 
 import useAuth from "../hooks/UseAuth";
 import useAxiosSecure from "../hooks/useAxiosSecure";
+import { uploadImage } from "../lib/uploadImage";
 
 const MAX_UPLOAD_MB = 8;
 const MAX_EDGE_PX = 1600;
@@ -58,8 +59,7 @@ const fieldVariants = {
 
 /**
  * Resize and compress an image in the browser.
- * Returns a JPEG data URL to preserve compatibility with
- * backends that currently accept the `image` field as a string.
+ * Returns a JPEG data URL for upload to the configured image service.
  */
 const compressImage = (file) =>
   new Promise((resolve, reject) => {
@@ -192,7 +192,6 @@ const CreateIssue = () => {
   const [description, setDescription] = useState("");
   const [category, setCategory] = useState("Road");
   const [customCategory, setCustomCategory] = useState("");
-  const [priority, setPriority] = useState("Normal");
   const [location, setLocation] = useState("");
 
   const [image, setImage] = useState("");
@@ -291,12 +290,13 @@ const CreateIssue = () => {
 
     try {
       const compressedImage = await compressImage(file);
+      const imageUrl = await uploadImage(compressedImage);
 
       // Ignore an older processing request if another image was selected.
       if (requestId !== imageRequestRef.current) return;
 
-      setImage(compressedImage);
-      setPreview(compressedImage);
+      setImage(imageUrl);
+      setPreview(imageUrl);
     } catch (error) {
       if (requestId !== imageRequestRef.current) return;
 
@@ -385,28 +385,8 @@ const CreateIssue = () => {
         title: title.trim(),
         description: description.trim(),
         category: resolvedCategory,
-        priority,
         location: location.trim(),
         image,
-
-        postedBy: {
-          email: user.email,
-          name: user.displayName || "User",
-          photoURL: user.photoURL || "",
-        },
-
-        status: "Pending",
-        upvotes: 0,
-        upvotedUsers: [],
-
-        timeline: [
-          {
-            status: "Pending",
-            message: "Issue reported by citizen",
-            updatedBy: user.email,
-            date: new Date().toISOString(),
-          },
-        ],
       };
 
       createIssueMutation.mutate(newIssue);
@@ -417,7 +397,6 @@ const CreateIssue = () => {
       description,
       category,
       customCategory,
-      priority,
       location,
       image,
       imageProcessing,
@@ -644,7 +623,7 @@ const CreateIssue = () => {
               </div>
             </motion.div>
 
-            {/* Category and priority */}
+            {/* Category and service-assigned priority */}
             <motion.div
               variants={prefersReducedMotion ? undefined : fieldVariants}
               className="grid gap-5 sm:grid-cols-2"
@@ -724,25 +703,12 @@ const CreateIssue = () => {
                 )}
               </div>
 
-              <div>
-                <FieldLabel htmlFor="issue-priority">
-                  Priority <span className="text-error">*</span>
-                </FieldLabel>
-
-                <select
-                  id="issue-priority"
-                  name="priority"
-                  value={priority}
-                  onChange={(event) => setPriority(event.target.value)}
-                  disabled={busy}
-                  className="select select-bordered w-full bg-base-100"
-                >
-                  <option value="Normal">Normal</option>
-                  <option value="High">High</option>
-                </select>
-
+              <div className="flex flex-col justify-center rounded-xl border border-base-300 bg-base-200/40 p-4">
+                <span className="text-sm font-semibold">Priority</span>
+                <span className="mt-2 badge badge-outline w-fit">Normal</span>
                 <p className="mt-2 text-xs leading-5 text-base-content/50">
-                  Select High only when the issue requires urgent attention.
+                  The API assigns Normal priority to new reports. Priority
+                  selection is not supported by the service.
                 </p>
               </div>
             </motion.div>

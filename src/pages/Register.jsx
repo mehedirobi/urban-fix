@@ -161,6 +161,18 @@ const Register = () => {
           photo
         );
 
+        if (user?.requiresEmailVerification) {
+          await Swal.fire({
+            icon: "info",
+            title: "Verify your email",
+            text: `A verification link was sent to ${user.email}. Verify your address, then sign in.`,
+            confirmButtonText: "Go to login",
+            confirmButtonColor: "#087f5b",
+          });
+          navigate("/login", { replace: true });
+          return;
+        }
+
         await Swal.fire({
           icon: "success",
           title: "Account created",

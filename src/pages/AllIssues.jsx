@@ -18,7 +18,7 @@ import {
 
 import useAuth from "../hooks/UseAuth";
 import useAxiosSecure from "../hooks/useAxiosSecure";
-import { api, fetchAllIssues } from "../lib/api";
+import { api, fetchAllIssues, normalizeIssue } from "../lib/api";
 
 const ITEMS_PER_PAGE = 8;
 const SEARCH_DEBOUNCE_MS = 250;
@@ -121,28 +121,9 @@ const formatStatus = (status) => {
   return labels[normalized] || status || "Unknown";
 };
 
-/**
- * Supports common API response shapes.
- * Adjust this function if fetchAllIssues returns a different contract.
- */
-const normalizeIssuesResponse = (response) => {
-  if (Array.isArray(response)) return response;
-  if (Array.isArray(response?.issues)) return response.issues;
-  if (Array.isArray(response?.data)) return response.data;
-  if (Array.isArray(response?.data?.issues)) return response.data.issues;
-
-  return [];
-};
-
 const getUpdatedIssueFromResponse = (response) => {
-  const data = response?.data;
-
-  if (data?._id) return data;
-  if (data?.issue?._id) return data.issue;
-  if (data?.updatedIssue?._id) return data.updatedIssue;
-  if (data?.data?._id) return data.data;
-
-  return null;
+  const issue = response?.data?.issue;
+  return issue?._id ? normalizeIssue(issue) : null;
 };
 
 const containerVariants = {
@@ -575,10 +556,7 @@ const AllIssues = () => {
     refetch,
   } = useQuery({
     queryKey: ISSUES_QUERY_KEY,
-    queryFn: async () => {
-      const response = await fetchAllIssues(api);
-      return normalizeIssuesResponse(response);
-    },
+    queryFn: () => fetchAllIssues(api),
     staleTime: 30_000,
     retry: 1,
     refetchOnWindowFocus: false,
@@ -762,9 +740,9 @@ const AllIssues = () => {
       });
 
       try {
-        const response = await secureApi.put(
+        const response = await secureApi.patch(
           `/issues/${encodeURIComponent(issueId)}/upvote`,
-          { userEmail: user.email },
+          {},
         );
 
         const updatedIssue = getUpdatedIssueFromResponse(response);
@@ -820,7 +798,7 @@ const AllIssues = () => {
         });
       }
     },
-    [userEmail, user, navigate, queryClient, secureApi],
+    [userEmail, navigate, queryClient, secureApi],
   );
 
   if (isPending) {

@@ -5,9 +5,9 @@ secureApi.interceptors.request.use(
   async (config) => {
     if (auth.currentUser) {
       const token = await auth.currentUser.getIdToken();
-      config.headers.Authorization = `Bearer ${token}`;
+      config.headers.set("Authorization", `Bearer ${token}`);
     } else {
-      delete config.headers.Authorization;
+      config.headers.delete("Authorization");
     }
 
     return config;

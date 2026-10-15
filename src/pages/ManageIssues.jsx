@@ -57,7 +57,7 @@ const ManageIssues = () => {
 
   const updateMutation = useMutation({
     mutationFn: ({ id, status }) =>
-      axiosSecure.patch(`/issues/${id}/status`, { status }),
+      axiosSecure.patch(`/issues/${encodeURIComponent(id)}`, { status }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey }),
     onError: (error) =>
       Swal.fire(
@@ -69,7 +69,7 @@ const ManageIssues = () => {
 
   const deleteMutation = useMutation({
     mutationFn: (id) =>
-      axiosSecure.delete(`/issues/${id}`, { data: { userEmail: user?.email } }),
+      axiosSecure.delete(`/issues/${encodeURIComponent(id)}`),
     onSuccess: () => queryClient.invalidateQueries({ queryKey }),
     onError: (error) =>
       Swal.fire(

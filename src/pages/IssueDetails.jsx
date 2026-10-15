@@ -12,7 +12,7 @@ import {
   HiOutlineRefresh,
 } from "react-icons/hi";
 
-import { api, readRecord } from "../lib/api";
+import { api, normalizeIssue, readRecord } from "../lib/api";
 import useAuth from "../hooks/UseAuth";
 import useAxiosSecure from "../hooks/useAxiosSecure";
 
@@ -166,8 +166,9 @@ const IssueDetails = () => {
           return;
         }
 
+        const normalized = normalizeIssue(found);
         const normalizedIssue = {
-          ...found,
+          ...normalized,
           title: found.title || "Untitled issue",
           category: found.category || "Uncategorized",
           status: found.status || "Pending",
@@ -175,12 +176,8 @@ const IssueDetails = () => {
           location: found.location || "Location unavailable",
           description: found.description || "",
           image: found.image || NO_IMAGE_FALLBACK,
-          upvotes: Math.max(0, Number(found.upvotes) || 0),
-          upvotedUsers: Array.isArray(found.upvotedUsers)
-            ? found.upvotedUsers
-                .filter((email) => typeof email === "string")
-                .map(normalizeEmail)
-            : [],
+          upvotes: Math.max(0, normalized.upvotes),
+          upvotedUsers: normalized.upvotedUsers.map(normalizeEmail),
           timeline:
             Array.isArray(found.timeline) && found.timeline.length > 0
               ? found.timeline
@@ -284,26 +281,23 @@ const IssueDetails = () => {
     }));
 
     try {
-      const response = await secureApi.put(`/issues/${issue._id}/upvote`, {
-        userEmail: user.email,
-      });
+      const response = await secureApi.patch(
+        `/issues/${encodeURIComponent(issue._id)}/upvote`,
+        {},
+      );
 
       const updatedIssue = readRecord(response.data, "issue");
 
       if (updatedIssue && typeof updatedIssue === "object") {
+        const normalized = normalizeIssue(updatedIssue);
         setIssue((current) => {
           if (!current) return current;
 
           return {
             ...current,
-            ...updatedIssue,
-            upvotes:
-              Number(updatedIssue.upvotes) >= 0
-                ? Number(updatedIssue.upvotes)
-                : current.upvotes,
-            upvotedUsers: Array.isArray(updatedIssue.upvotedUsers)
-              ? updatedIssue.upvotedUsers.map(normalizeEmail)
-              : current.upvotedUsers,
+            ...normalized,
+            upvotes: normalized.upvotes,
+            upvotedUsers: normalized.upvotedUsers.map(normalizeEmail),
           };
         });
       }

@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Swal from "sweetalert2";
 import UseAuth from "../hooks/UseAuth";
 import useAxiosSecure from "../hooks/useAxiosSecure";
-import { readCollection } from "../lib/api";
+import { fetchAllPages } from "../lib/api";
 
 const roles = ["citizen", "staff", "admin"];
 
@@ -21,10 +21,7 @@ const ManageUsers = () => {
     refetch,
   } = useQuery({
     queryKey,
-    queryFn: async () => {
-      const response = await api.get("/users", { params: { limit: 200 } });
-      return readCollection(response.data);
-    },
+    queryFn: () => fetchAllPages(api, "/users"),
     enabled: user?.role === "admin",
   });
 

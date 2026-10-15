@@ -28,7 +28,7 @@ import Swal from "sweetalert2";
 
 import UseAuth from "../hooks/UseAuth";
 import useAxiosSecure from "../hooks/useAxiosSecure";
-import { readCollection } from "../lib/api";
+import { fetchAllPages } from "../lib/api";
 
 ChartJS.register(
   CategoryScale,
@@ -373,15 +373,8 @@ const UserPayments = () => {
   } = useQuery({
     queryKey,
     enabled: Boolean(email),
-    queryFn: async () => {
-      const response = await secureApi.get(
-        `/payments/${encodeURIComponent(email)}`
-      );
-
-      const records = readCollection(response.data);
-
-      return Array.isArray(records) ? records : [];
-    },
+    queryFn: () =>
+      fetchAllPages(secureApi, `/payments/${encodeURIComponent(email)}`),
     staleTime: 30_000,
     retry: 1,
   });
@@ -393,10 +386,7 @@ const UserPayments = () => {
         throw new Error("A checkout session and signed-in user are required.");
       }
 
-      const response = await secureApi.post("/payments/verify", {
-        sessionId,
-        email,
-      });
+      const response = await secureApi.post("/payments/verify", { sessionId });
 
       return response.data;
     },
@@ -454,10 +444,7 @@ const UserPayments = () => {
         throw new Error("Please sign in before starting checkout.");
       }
 
-      return secureApi.post("/create-checkout-session", {
-        cost: 100,
-        userEmail: email,
-      });
+      return secureApi.post("/create-checkout-session", {});
     },
 
     onSuccess: (response) => {

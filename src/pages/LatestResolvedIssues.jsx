@@ -8,7 +8,7 @@ import {
   HiOutlineArrowRight,
 } from "react-icons/hi";
 
-import { api, readIssueList } from "../lib/api";
+import { api, fetchAllIssues } from "../lib/api";
 
 const NO_IMAGE_FALLBACK =
   "data:image/svg+xml;charset=UTF-8," +
@@ -147,13 +147,7 @@ const LatestResolvedIssues = () => {
     isFetching,
   } = useQuery({
     queryKey: ["issues"],
-    queryFn: async () => {
-      const response = await api.get("/issues", {
-        params: { limit: 200 },
-      });
-
-      return readIssueList(response.data);
-    },
+    queryFn: () => fetchAllIssues(api),
     staleTime: 30_000,
     retry: 1,
   });

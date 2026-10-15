@@ -363,12 +363,7 @@ const DashboardOverview = () => {
     staleTime: 30_000,
     retry: 1,
     queryFn: async () => {
-      const response = await axiosSecure.get("/dashboard-overview", {
-        params: {
-          email,
-          role: userRole,
-        },
-      });
+      const response = await axiosSecure.get("/dashboard-overview");
 
       const payload = response?.data;
 

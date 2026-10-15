@@ -9,6 +9,7 @@ import { HiOutlineArrowLeft } from "react-icons/hi";
 import useAuth from "../hooks/UseAuth";
 import useAxiosSecure from "../hooks/useAxiosSecure";
 import { readRecord } from "../lib/api";
+import { uploadImage } from "../lib/uploadImage";
 
 const MAX_UPLOAD_MB = 8;
 const MAX_EDGE_PX = 1600;
@@ -290,10 +291,11 @@ const EditIssue = () => {
 
     try {
       const compressedImage = await compressImage(file);
+      const imageUrl = await uploadImage(compressedImage);
 
       setFormData((previous) => ({
         ...previous,
-        image: compressedImage,
+        image: imageUrl,
       }));
     } catch (error) {
       console.error("Image processing failed:", error);
@@ -386,7 +388,7 @@ const EditIssue = () => {
     setSubmitting(true);
 
     try {
-      await secureApi.put(`/issues/${encodeURIComponent(id)}`, payload);
+      await secureApi.patch(`/issues/${encodeURIComponent(id)}`, payload);
 
       await Promise.all([
         queryClient.invalidateQueries({

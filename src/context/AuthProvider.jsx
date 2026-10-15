@@ -4,6 +4,7 @@ import {
   createUserWithEmailAndPassword,
   GoogleAuthProvider,
   onIdTokenChanged,
+  sendEmailVerification,
   signInWithEmailAndPassword,
   signInWithPopup,
   signOut,
@@ -11,8 +12,8 @@ import {
 } from "firebase/auth";
 import { auth } from "../firebase/firebase.init";
 import Swal from "sweetalert2";
-import axios from "axios";
 import useAxiosSecure from "../hooks/useAxiosSecure";
+import { uploadImage } from "../lib/uploadImage";
 
 const TOKEN_KEY = "access-token";
 const DB_USER_CACHE_TTL = 15_000;
@@ -22,6 +23,8 @@ const normalizeEmail = (email = "") => email.trim().toLowerCase();
 const getErrorMessage = (error) => {
   const messages = {
     "auth/email-already-in-use": "An account with this email already exists.",
+    "auth/email-not-verified":
+      "Please verify your email address before signing in. Check your inbox for the verification link.",
     "auth/invalid-email": "Please enter a valid email address.",
     "auth/invalid-credential": "Invalid email or password.",
     "auth/user-disabled": "This account has been disabled.",
@@ -46,11 +49,7 @@ const getErrorMessage = (error) => {
 const extractDBUser = (responseData) => {
   if (!responseData || typeof responseData !== "object") return null;
 
-  const candidate =
-    responseData.user ??
-    responseData.data?.user ??
-    responseData.data ??
-    responseData;
+  const candidate = responseData.user ?? responseData;
 
   return candidate &&
     typeof candidate === "object" &&
@@ -168,36 +167,14 @@ const AuthProvider = ({ children }) => {
   }, []);
 
   // --------------------------------------------------
-  // FETCH USER FROM DATABASE
-  // --------------------------------------------------
-
-  const getUserFromDB = useCallback(
-    async (email) => {
-      const normalizedEmail = normalizeEmail(email);
-
-      if (!normalizedEmail) return null;
-
-      try {
-        const response = await axiosSecure.get(
-          `/users/${encodeURIComponent(normalizedEmail)}`
-        );
-
-        return extractDBUser(response.data);
-      } catch (error) {
-        console.error("Failed to fetch UrbanFix user:", error);
-        return null;
-      }
-    },
-    [axiosSecure]
-  );
-
-  // --------------------------------------------------
   // CREATE / SYNCHRONIZE DATABASE USER
   // --------------------------------------------------
 
   const saveUserToDB = useCallback(
     async (firebaseUser) => {
-      if (!firebaseUser?.email) return null;
+      if (!firebaseUser?.email) {
+        throw new Error("A verified Firebase email is required.");
+      }
 
       const payload = {
         email: normalizeEmail(firebaseUser.email),
@@ -207,10 +184,16 @@ const AuthProvider = ({ children }) => {
 
       try {
         const response = await axiosSecure.post("/users", payload);
-        return extractDBUser(response.data);
+        const dbUser = extractDBUser(response.data);
+
+        if (!dbUser) {
+          throw new Error("The service did not return the synchronized user.");
+        }
+
+        return dbUser;
       } catch (error) {
         console.error("Failed to synchronize UrbanFix user:", error);
-        return null;
+        throw error;
       }
     },
     [axiosSecure]
@@ -238,19 +221,11 @@ const AuthProvider = ({ children }) => {
       }
 
       const request = (async () => {
-        let dbUser = await saveUserToDB(firebaseUser);
-
-        // A successful response may not contain the database user.
-        if (!dbUser?.email && !dbUser?.uid && !dbUser?._id) {
-          dbUser = await getUserFromDB(firebaseUser.email);
-        }
-
-        if (dbUser) {
-          dbUserCacheRef.current.set(uid, {
-            user: dbUser,
-            timestamp: Date.now(),
-          });
-        }
+        const dbUser = await saveUserToDB(firebaseUser);
+        dbUserCacheRef.current.set(uid, {
+          user: dbUser,
+          timestamp: Date.now(),
+        });
 
         return dbUser;
       })();
@@ -265,7 +240,7 @@ const AuthProvider = ({ children }) => {
         }
       }
     },
-    [saveUserToDB, getUserFromDB]
+    [saveUserToDB]
   );
 
   // --------------------------------------------------
@@ -312,6 +287,7 @@ const AuthProvider = ({ children }) => {
   const registerUser = useCallback(
     async (email, password, name, profileImgFile) => {
       beginOperation();
+      let createdUser = null;
 
       try {
         const normalizedEmail = normalizeEmail(email);
@@ -326,31 +302,12 @@ const AuthProvider = ({ children }) => {
           normalizedEmail,
           password
         );
+        createdUser = result.user;
 
         let photoURL = "";
 
         if (profileImgFile) {
-          const imageHostKey = import.meta.env.VITE_image_host;
-
-          if (!imageHostKey) {
-            throw new Error(
-              "Image upload is not configured. Please try again without a profile image."
-            );
-          }
-
-          const formData = new FormData();
-          formData.append("image", profileImgFile);
-
-          const response = await axios.post(
-            `https://api.imgbb.com/1/upload?key=${encodeURIComponent(imageHostKey)}`,
-            formData
-          );
-
-          if (!response.data?.success || !response.data?.data?.url) {
-            throw new Error("The profile image could not be uploaded.");
-          }
-
-          photoURL = response.data.data.url;
+          photoURL = await uploadImage(profileImgFile);
         }
 
         await updateProfile(result.user, {
@@ -361,6 +318,21 @@ const AuthProvider = ({ children }) => {
         await result.user.reload();
 
         const firebaseUser = auth.currentUser || result.user;
+
+        if (!firebaseUser.emailVerified) {
+          await sendEmailVerification(firebaseUser);
+          await signOut(auth);
+          clearFirebaseToken();
+
+          if (mountedRef.current) {
+            setUser(null);
+          }
+
+          return {
+            requiresEmailVerification: true,
+            email: normalizedEmail,
+          };
+        }
 
         // Clear any stale cache before synchronizing the new profile.
         dbUserCacheRef.current.delete(firebaseUser.uid);
@@ -386,6 +358,15 @@ const AuthProvider = ({ children }) => {
 
         return mergedUser;
       } catch (error) {
+        if (createdUser && !createdUser.emailVerified) {
+          try {
+            await signOut(auth);
+          } catch (signOutError) {
+            console.error("Could not sign out unverified account:", signOutError);
+          }
+          clearFirebaseToken();
+        }
+
         await Swal.fire({
           icon: "error",
           title: "Registration Failed",
@@ -403,6 +384,7 @@ const AuthProvider = ({ children }) => {
       syncAndGetDBUser,
       handleBlockedUser,
       buildAppUser,
+      clearFirebaseToken,
     ]
   );
 
@@ -421,7 +403,20 @@ const AuthProvider = ({ children }) => {
           password
         );
 
-        const firebaseUser = result.user;
+        await result.user.reload();
+        const firebaseUser = auth.currentUser || result.user;
+
+        if (!firebaseUser.emailVerified) {
+          await signOut(auth);
+          clearFirebaseToken();
+
+          const error = new Error(
+            "Please verify your email address before signing in. Check your inbox for the verification link."
+          );
+          error.code = "auth/email-not-verified";
+          throw error;
+        }
+
         const dbUser = await syncAndGetDBUser(firebaseUser);
 
         if (await handleBlockedUser(dbUser)) return null;
@@ -451,6 +446,7 @@ const AuthProvider = ({ children }) => {
       syncAndGetDBUser,
       handleBlockedUser,
       buildAppUser,
+      clearFirebaseToken,
     ]
   );
 
@@ -464,6 +460,12 @@ const AuthProvider = ({ children }) => {
     try {
       const result = await signInWithPopup(auth, googleProvider);
       const firebaseUser = result.user;
+
+      if (!firebaseUser.emailVerified) {
+        await signOut(auth);
+        clearFirebaseToken();
+        throw new Error("A verified email address is required to sign in.");
+      }
 
       const dbUser = await syncAndGetDBUser(firebaseUser);
 
@@ -494,6 +496,7 @@ const AuthProvider = ({ children }) => {
     syncAndGetDBUser,
     handleBlockedUser,
     buildAppUser,
+    clearFirebaseToken,
   ]);
 
   // --------------------------------------------------
@@ -613,6 +616,16 @@ const AuthProvider = ({ children }) => {
           return;
         }
 
+        if (!firebaseUser.emailVerified) {
+          clearFirebaseToken();
+
+          if (mountedRef.current && currentEvent === authEventRef.current) {
+            setUser(null);
+          }
+
+          return;
+        }
+
         await syncFirebaseToken(firebaseUser);
 
         const dbUser = await syncAndGetDBUser(firebaseUser);
@@ -629,7 +642,7 @@ const AuthProvider = ({ children }) => {
       } catch (error) {
         console.error("Firebase authentication state error:", error);
 
-        if (!firebaseUser && mountedRef.current) {
+        if (mountedRef.current && currentEvent === authEventRef.current) {
           setUser(null);
         }
       } finally {

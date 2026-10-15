@@ -4,12 +4,23 @@ import UseAuth from "../hooks/UseAuth";
 import useAxiosSecure from "../hooks/useAxiosSecure";
 import { Link } from "react-router-dom";
 import Swal from "sweetalert2";
-import { readCollection } from "../lib/api";
+import { fetchAllIssues } from "../lib/api";
 
 const CATEGORIES = ["Road", "Garbage", "Water", "Streetlight", "Others"];
 
 const getErrorMessage = (err, fallback) =>
   err?.response?.data?.message || fallback;
+
+const getOwnerEmail = (issue) =>
+  String(
+    issue?.userEmail ||
+      (typeof issue?.postedBy === "string"
+        ? issue.postedBy
+        : issue?.postedBy?.email) ||
+      ""
+  )
+    .trim()
+    .toLowerCase();
 
 /* ---------------- Issue Card ---------------- */
 
@@ -18,7 +29,10 @@ const IssueCard = memo(function IssueCard({ issue, onEdit, onDelete }) {
     <div className="card border shadow-lg rounded-xl">
       <figure>
         <img
-          src={issue.image || "https://via.placeholder.com/400x250?text=No+Image"}
+          src={
+            issue.image ||
+            "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='400' height='250'%3E%3Crect width='100%25' height='100%25' fill='%23e5e7eb'/%3E%3C/svg%3E"
+          }
           alt={issue.title}
           className="w-full h-48 object-cover rounded-t-xl"
           loading="lazy"
@@ -153,18 +167,21 @@ const MyIssues = () => {
     data: issues = [],
     isLoading,
     isError,
+    refetch,
   } = useQuery({
     queryKey,
     enabled: !!user?.email,
     queryFn: async () => {
-      const res = await secureApi.get(`/issues/my/${encodeURIComponent(user.email)}`);
-      return readCollection(res.data);
+      const allIssues = await fetchAllIssues(secureApi);
+      const email = user.email.trim().toLowerCase();
+      return allIssues.filter((issue) => getOwnerEmail(issue) === email);
     },
     staleTime: 30_000,
   });
 
   const deleteMutation = useMutation({
-    mutationFn: (id) => secureApi.delete(`/issues/${id}`, { data: { userEmail: user.email } }),
+    mutationFn: (id) =>
+      secureApi.delete(`/issues/${encodeURIComponent(id)}`),
     onMutate: async (id) => {
       await queryClient.cancelQueries({ queryKey });
       const previous = queryClient.getQueryData(queryKey);
@@ -182,7 +199,8 @@ const MyIssues = () => {
   });
 
   const editMutation = useMutation({
-    mutationFn: ({ _id, ...payload }) => secureApi.put(`/issues/${_id}`, payload),
+    mutationFn: ({ _id, ...payload }) =>
+      secureApi.patch(`/issues/${encodeURIComponent(_id)}`, payload),
     onMutate: async ({ _id, ...payload }) => {
       await queryClient.cancelQueries({ queryKey });
       const previous = queryClient.getQueryData(queryKey);
@@ -197,6 +215,7 @@ const MyIssues = () => {
     },
     onSuccess: () => {
       setEditIssueData(null);
+      queryClient.invalidateQueries({ queryKey: ["issues"] });
       Swal.fire({ title: "Updated", text: "Issue updated successfully.", icon: "success" });
     },
   });
@@ -237,7 +256,18 @@ const MyIssues = () => {
   }
 
   if (isError) {
-    return <p className="text-center py-10 text-red-500">Failed to load issues.</p>;
+    return (
+      <div className="py-10 text-center" role="alert">
+        <p className="text-error">Failed to load your issues from the service.</p>
+        <button
+          type="button"
+          onClick={() => refetch()}
+          className="btn btn-outline btn-sm mt-3"
+        >
+          Try again
+        </button>
+      </div>
+    );
   }
 
   return (

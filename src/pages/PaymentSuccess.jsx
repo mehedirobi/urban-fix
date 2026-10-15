@@ -68,7 +68,6 @@ const PaymentSuccess = () => {
 
       const response = await api.post("/payments/verify", {
         sessionId: checkoutSessionId,
-        email: user.email,
       });
 
       return response.data;

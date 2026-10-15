@@ -21,6 +21,9 @@ import SocialLogin from "./SocialLogin";
 
 const getFirebaseErrorMessage = (error) => {
   switch (error?.code) {
+    case "auth/email-not-verified":
+      return "Please verify your email address before signing in. Check your inbox for the verification link.";
+
     case "auth/invalid-credential":
     case "auth/invalid-login-credentials":
     case "auth/wrong-password":
