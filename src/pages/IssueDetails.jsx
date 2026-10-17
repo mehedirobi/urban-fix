@@ -179,8 +179,8 @@ const IssueDetails = () => {
           upvotes: Math.max(0, normalized.upvotes),
           upvotedUsers: normalized.upvotedUsers.map(normalizeEmail),
           timeline:
-            Array.isArray(found.timeline) && found.timeline.length > 0
-              ? found.timeline
+            Array.isArray(normalized.timeline) && normalized.timeline.length > 0
+              ? normalized.timeline
               : [
                   {
                     status: found.status || "Pending",

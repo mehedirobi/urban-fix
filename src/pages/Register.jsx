@@ -44,6 +44,7 @@ const getRegistrationErrorMessage = (error) => {
 
   return (
     messages[error?.code] ||
+    error?.response?.data?.message ||
     error?.message ||
     "We couldn't create your account. Please try again."
   );
@@ -65,7 +66,6 @@ const Register = () => {
     watch,
     setError,
     clearErrors,
-    setFocus,
     formState: { errors },
   } = useForm({
     mode: "onBlur",
@@ -160,6 +160,8 @@ const Register = () => {
           data.name.trim(),
           photo
         );
+
+        if (!user) return;
 
         if (user?.requiresEmailVerification) {
           await Swal.fire({

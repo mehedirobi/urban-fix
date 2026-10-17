@@ -34,7 +34,7 @@ UrbanFix is a digital platform that enables citizens to report, track, and resol
 
 1. Install dependencies with `npm install`.
 2. Copy `.env.example` to `.env` and set the Firebase web configuration and image upload key. `VITE_API_URL` should be the API origin `https://urban-fix-server.vercel.app` (no path suffix); configure the same variable in the frontend deployment environment.
-3. Start the client with `npm run dev`; run `npm run lint` and `npm run build` before deployment.
+3. Start the client with `npm run dev`; run `npm run lint` and `npm run build` before deployment. To test the production build locally, run `npm run preview`; Vite uses port 5173 (or 5174 if that port is occupied), which is allowed by the API's local CORS configuration.
 
 `VITE_API_URL` is shared by all API requests and falls back to `https://urban-fix-server.vercel.app` if omitted. Browser-exposed `VITE_*` values are included in the client bundle; never put server credentials (including MongoDB or Stripe secrets) in these variables. Configure those only in the backend hosting environment.
 

@@ -1,13 +1,19 @@
 import axios from "axios";
 
-export const API_URL = (
+const configuredApiURL =
   import.meta.env.VITE_API_URL ||
-  "https://urban-fix-server.vercel.app"
-).replace(/\/+$/, "");
+  "https://urban-fix-server.vercel.app";
+const parsedApiURL = new URL(configuredApiURL);
+
+if (!["http:", "https:"].includes(parsedApiURL.protocol)) {
+  throw new Error("VITE_API_URL must use HTTP or HTTPS.");
+}
+
+export const API_URL = parsedApiURL.origin;
 
 const clientOptions = {
   baseURL: API_URL,
-  timeout: 15000,
+  timeout: 30000,
 };
 
 export const api = axios.create(clientOptions);

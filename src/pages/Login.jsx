@@ -22,7 +22,7 @@ import SocialLogin from "./SocialLogin";
 const getFirebaseErrorMessage = (error) => {
   switch (error?.code) {
     case "auth/email-not-verified":
-      return "Please verify your email address before signing in. Check your inbox for the verification link.";
+      return "Your email is not verified yet. We sent a new verification link; verify your address before signing in.";
 
     case "auth/invalid-credential":
     case "auth/invalid-login-credentials":
@@ -46,7 +46,10 @@ const getFirebaseErrorMessage = (error) => {
       return "Email and password login is currently unavailable.";
 
     default:
-      return "Something went wrong. Please try again.";
+      return (
+        error?.response?.data?.message ||
+        "Something went wrong. Please try again."
+      );
   }
 };
 
@@ -108,7 +111,9 @@ const Login = () => {
       setLoading(true);
 
       try {
-        await signInUser(data.email.trim(), data.password);
+        const signedInUser = await signInUser(data.email.trim(), data.password);
+
+        if (!signedInUser) return;
 
         await Swal.fire({
           icon: "success",

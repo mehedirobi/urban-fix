@@ -24,7 +24,7 @@ const getErrorMessage = (error) => {
   const messages = {
     "auth/email-already-in-use": "An account with this email already exists.",
     "auth/email-not-verified":
-      "Please verify your email address before signing in. Check your inbox for the verification link.",
+      "Your email is not verified yet. We sent a new verification link; verify your address before signing in.",
     "auth/invalid-email": "Please enter a valid email address.",
     "auth/invalid-credential": "Invalid email or password.",
     "auth/user-disabled": "This account has been disabled.",
@@ -41,6 +41,7 @@ const getErrorMessage = (error) => {
 
   return (
     messages[error?.code] ||
+    error?.response?.data?.message ||
     error?.message ||
     "Something went wrong. Please try again."
   );
@@ -304,6 +305,8 @@ const AuthProvider = ({ children }) => {
         );
         createdUser = result.user;
 
+        await sendEmailVerification(result.user);
+
         let photoURL = "";
 
         if (profileImgFile) {
@@ -320,7 +323,6 @@ const AuthProvider = ({ children }) => {
         const firebaseUser = auth.currentUser || result.user;
 
         if (!firebaseUser.emailVerified) {
-          await sendEmailVerification(firebaseUser);
           await signOut(auth);
           clearFirebaseToken();
 
@@ -367,12 +369,6 @@ const AuthProvider = ({ children }) => {
           clearFirebaseToken();
         }
 
-        await Swal.fire({
-          icon: "error",
-          title: "Registration Failed",
-          text: getErrorMessage(error),
-        });
-
         throw error;
       } finally {
         endOperation();
@@ -407,11 +403,23 @@ const AuthProvider = ({ children }) => {
         const firebaseUser = auth.currentUser || result.user;
 
         if (!firebaseUser.emailVerified) {
+          let verificationError;
+
+          try {
+            await sendEmailVerification(firebaseUser);
+          } catch (error) {
+            verificationError = error;
+          }
+
           await signOut(auth);
           clearFirebaseToken();
 
+          if (verificationError) {
+            throw verificationError;
+          }
+
           const error = new Error(
-            "Please verify your email address before signing in. Check your inbox for the verification link."
+            "Your email is not verified yet. We sent a new verification link; verify your address before signing in."
           );
           error.code = "auth/email-not-verified";
           throw error;
@@ -428,14 +436,6 @@ const AuthProvider = ({ children }) => {
         }
 
         return mergedUser;
-      } catch (error) {
-        await Swal.fire({
-          icon: "error",
-          title: "Login Failed",
-          text: getErrorMessage(error),
-        });
-
-        throw error;
       } finally {
         endOperation();
       }
@@ -478,14 +478,6 @@ const AuthProvider = ({ children }) => {
       }
 
       return mergedUser;
-    } catch (error) {
-      await Swal.fire({
-        icon: "error",
-        title: "Google Login Failed",
-        text: getErrorMessage(error),
-      });
-
-      throw error;
     } finally {
       endOperation();
     }

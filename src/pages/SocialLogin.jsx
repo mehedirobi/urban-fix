@@ -17,6 +17,8 @@ const SocialLogin = () => {
 
       const user = await signInGoogle();
 
+      if (!user) return;
+
       Swal.fire({
         icon: "success",
         title: "Login Successful",
@@ -34,7 +36,10 @@ const SocialLogin = () => {
       Swal.fire({
         icon: "error",
         title: "Login Failed",
-        text: error?.message || "Please try again",
+        text:
+          error?.response?.data?.message ||
+          error?.message ||
+          "Please try again",
       });
     } finally {
       setLoading(false);
